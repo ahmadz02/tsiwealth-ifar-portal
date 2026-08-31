@@ -1,0 +1,1089 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSI Wealth Planners - Takaful Confirmation & Signature</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../supabase-config.js"></script>
+<style>
+  body { font-family: 'Inter', sans-serif; }
+  .sig-canvas { touch-action: none; cursor: crosshair; }
+  .brand-navy { color: #212F6E; }
+  .bg-brand-navy { background-color: #212F6E; }
+  .bg-brand-gold { background-color: #FFCB08; }
+  .border-brand-navy { border-color: #212F6E; }
+  .ring-brand { --tw-ring-color: #212F6E; }
+  @media print {
+      .no-print { display: none !important; }
+      .print-card { box-shadow: none !important; border: 1px solid #ccc !important; }
+  }
+</style>
+
+<script>
+  let AUTH_USER = null;
+
+  async function requireAuth() {
+    const { data, error } = await supabaseClient.auth.getUser();
+    if (error || !data.user) {
+      window.location.replace('../login.html');
+      return false;
+    }
+    AUTH_USER = data.user;
+    return true;
+  }
+
+  async function logoutApp() {
+    await supabaseClient.auth.signOut();
+    window.location.replace('../login.html');
+  }
+</script>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+
+  <!-- Top Navigation Bar -->
+  <header class="bg-brand-navy text-white shadow-md no-print sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="bg-white/10 p-2 rounded-lg text-brand-gold">
+          <i class="fa-solid fa-file-signature text-xl"></i>
+        </div>
+        <div>
+          <h1 class="font-bold text-lg leading-none">TSI Wealth Planners</h1>
+          <span class="text-xs text-slate-300">Takaful Confirmation &amp; Signature Portal</span>
+        </div>
+      </div>
+
+      <div id="authenticated-user-controls" class="flex items-center gap-3">
+        
+        <a href="../index.html"
+          class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-white transition-all flex items-center gap-2">
+          <i class="fa-solid fa-table-cells-large"></i>
+        <span class="hidden sm:inline">Adviser Portal</span>
+        </a>
+
+
+
+        <div class="hidden sm:block text-right">
+          <p id="auth-user-name" class="text-xs font-semibold text-white">Adviser</p>
+          <p id="auth-user-email" class="text-[10px] text-slate-300"></p>
+        </div>
+        <button onclick="logoutApp()" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-white transition-all flex items-center gap-2">
+          <i class="fa-solid fa-right-from-bracket"></i>
+          <span>Logout</span>
+        </button>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- Notification Banner / Toast Container -->
+  <div id="toast-container" class="fixed top-20 right-4 z-50 flex flex-col space-y-2 no-print max-w-sm"></div>
+
+  <!-- Main Content Container -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+    <!-- ADVISER VIEW -->
+    <section id="view-adviser" class="space-y-6">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <div>
+          <h2 class="text-2xl font-bold text-slate-900">Confirmation of Recommended Solutions</h2>
+          <p class="text-slate-500 text-sm mt-1">Create a Takaful selection confirmation, send it to your client for review &amp; signature, then sign to close.</p>
+        </div>
+        <button onclick="openCreateModal()" class="inline-flex items-center justify-center bg-brand-navy hover:opacity-90 text-white font-medium px-5 py-2.5 rounded-xl shadow-sm transition-all space-x-2">
+          <i class="fa-solid fa-plus"></i>
+          <span>New Confirmation Form</span>
+        </button>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
+          <div class="w-10 h-10 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
+            <i class="fa-solid fa-clock"></i>
+          </div>
+          <div>
+            <p class="text-xs text-slate-500">Awaiting Client</p>
+            <p id="stat-awaiting-client" class="text-xl font-bold text-slate-800">0</p>
+          </div>
+        </div>
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
+          <div class="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+            <i class="fa-solid fa-pen-nib"></i>
+          </div>
+          <div>
+            <p class="text-xs text-slate-500">Needs Adviser Sign</p>
+            <p id="stat-awaiting-adviser" class="text-xl font-bold text-slate-800">0</p>
+          </div>
+        </div>
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
+          <div class="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+            <i class="fa-solid fa-circle-check"></i>
+          </div>
+          <div>
+            <p class="text-xs text-slate-500">Closed / Completed</p>
+            <p id="stat-completed" class="text-xl font-bold text-slate-800">0</p>
+          </div>
+        </div>
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
+          <div class="w-10 h-10 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
+            <i class="fa-solid fa-folder-open"></i>
+          </div>
+          <div>
+            <p class="text-xs text-slate-500">Total Forms</p>
+            <p id="stat-total" class="text-xl font-bold text-slate-800">0</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+          <h3 class="font-semibold text-slate-800">Recent Confirmation Requests</h3>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-slate-50 text-slate-500 uppercase text-xs">
+              <tr>
+                <th class="px-6 py-3 font-semibold">Ref No. &amp; Participant</th>
+                <th class="px-6 py-3 font-semibold">Certificate No.</th>
+                <th class="px-6 py-3 font-semibold">Date Created</th>
+                <th class="px-6 py-3 font-semibold">Status</th>
+                <th class="px-6 py-3 font-semibold text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="documents-table-body" class="divide-y divide-slate-100"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ADVISER COUNTER-SIGN / REVIEW VIEW -->
+    <section id="view-review" class="hidden space-y-6 max-w-3xl mx-auto">
+      <div id="review-view-container" class="bg-white rounded-2xl border border-slate-200 shadow-md p-6 sm:p-10 space-y-6 print-card"></div>
+    </section>
+
+  </main>
+
+  <!-- CREATE PROPOSAL MODAL -->
+  <div id="modal-create" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4 overflow-y-auto">
+    <div class="bg-white rounded-2xl max-w-2xl w-full p-6 sm:p-8 space-y-6 shadow-2xl relative my-8">
+      <div class="flex justify-between items-center border-b border-slate-100 pb-4">
+        <div>
+          <h3 class="text-xl font-bold text-slate-900">Create New Confirmation Form</h3>
+          <p class="text-xs text-slate-500 mt-0.5">Confirmation of Recommended Solutions for Takaful Products</p>
+        </div>
+        <button onclick="closeCreateModal()" class="text-slate-400 hover:text-slate-600 p-2">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <form id="form-create-proposal" onsubmit="handleCreateProposal(event)" class="space-y-5">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 uppercase mb-1">Name of Participant *</label>
+            <input type="text" id="input-participant-name" required placeholder="e.g. Ahmad bin Ismail" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:ring-2 ring-brand focus:border-brand-navy text-sm">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 uppercase mb-1">Certificate No. *</label>
+            <input type="text" id="input-certificate-no" required placeholder="e.g. TK-2026-001234" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:ring-2 ring-brand focus:border-brand-navy text-sm">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 uppercase mb-1">Participant Email *</label>
+            <input type="email" id="input-participant-email" required placeholder="e.g. ahmad@example.com" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:ring-2 ring-brand focus:border-brand-navy text-sm">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 uppercase mb-1">Adviser / FAR Name *</label>
+            <input type="text" id="input-adviser-name" required placeholder="e.g. Tan Sri Adviser" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:ring-2 ring-brand focus:border-brand-navy text-sm">
+          </div>
+        </div>
+
+        <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs text-slate-600 leading-relaxed">
+          I hereby inform the Company that with regard to the above participant's application for a new certificate, I have provided the options from the following Takaful operator for the participant's consideration. Per Bank Negara Malaysia's Prudent and Professional Conduct requirements, at least three (3) different licensed Takaful operators must be presented.
+        </div>
+
+        <!-- Operator Selection: 3 dropdown rows -->
+        <div class="space-y-3">
+          <label class="block text-xs font-semibold text-slate-700 uppercase">Takaful Operators Presented (select 3 different operators) *</label>
+          <div id="operator-select-container" class="space-y-2"></div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 uppercase mb-1">Remarks, if any</label>
+          <textarea id="input-remarks" rows="2" placeholder="Optional remarks..." class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:ring-2 ring-brand focus:border-brand-navy text-sm"></textarea>
+        </div>
+
+        <div class="pt-4 border-t border-slate-100 flex justify-end space-x-3">
+          <button type="button" onclick="closeCreateModal()" class="px-4 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100 text-sm font-medium">Cancel</button>
+          <button type="submit" class="px-5 py-2.5 rounded-xl bg-brand-navy hover:opacity-90 text-white text-sm font-medium shadow-sm flex items-center space-x-2">
+            <i class="fa-solid fa-paper-plane"></i>
+            <span>Generate &amp; Send to Client</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- SHARE LINK MODAL -->
+  <div id="modal-share" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-lg w-full p-6 sm:p-8 space-y-6 shadow-2xl relative">
+      <div class="text-center space-y-2">
+        <div class="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-xl">
+          <i class="fa-solid fa-link"></i>
+        </div>
+        <h3 class="text-xl font-bold text-slate-900">Confirmation Link Generated!</h3>
+        <p class="text-xs text-slate-500">Send this unique link to your client to review and sign the confirmation.</p>
+      </div>
+
+      <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 flex items-center space-x-2">
+        <input type="text" id="share-link-input" readonly class="bg-transparent border-none w-full text-xs text-slate-700 focus:outline-none font-mono">
+        <button onclick="copyShareLink()" class="px-3 py-1.5 bg-brand-navy hover:opacity-90 text-white rounded-lg text-xs font-semibold flex items-center space-x-1 shrink-0">
+          <i class="fa-solid fa-copy"></i>
+          <span>Copy</span>
+        </button>
+      </div>
+
+      <div class="border-t border-slate-100 pt-4 flex flex-col gap-2">
+        <button id="email-share-btn" onclick="emailShareLink()" class="w-full py-2.5 bg-brand-navy hover:opacity-90 text-white rounded-xl text-xs font-semibold flex items-center justify-center space-x-2">
+          <i class="fa-solid fa-envelope"></i>
+          <span id="email-share-btn-label">Send Link to Participant's Email</span>
+        </button>
+        <button onclick="simulateClientOpen()" class="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold flex items-center justify-center space-x-2">
+          <i class="fa-solid fa-arrow-right-to-bracket"></i>
+          <span>Preview Client Link</span>
+        </button>
+        <button onclick="closeShareModal()" class="w-full py-2.5 text-slate-600 hover:bg-slate-100 rounded-xl text-xs font-medium">Done</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // ---------- Constants ----------
+  const OPERATORS = [
+    'Hong Leong MSIG Takaful',
+    'Great Eastern Takaful Berhad',
+    'AIA Public Takaful Berhad',
+    'Prudential BSN Takaful Berhad',
+    'Zurich Takaful Malaysia',
+    'Takaful Ikhlas',
+    'Etiqa Takaful',
+    'Syarikat Takaful Malaysia Keluarga Berhad'
+  ];
+  const COMPANY_ADDRESS = 'D-20-3A, Menara SuezCap 1, No.2, Jalan Kerinchi, Gerbang Kerinchi Lestari, 59200, Kuala Lumpur';
+  const COMPANY_CONTACT = 'Tel : (603) 2303 1987   |   Email: admin@tsiwealth.com   |   Website: www.tsiwealth.com.my';
+  const LOGO_BASE64 = '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';
+
+  // ---------- State ----------
+  let proposals = [];
+  let activeProposalId = null;
+  let currentRole = 'adviser';
+
+  let clientSigCanvas = null, clientSigCtx = null, isDrawingClient = false;
+  let adviserSigCanvas = null, adviserSigCtx = null, isDrawingAdviser = false;
+
+  window.addEventListener('DOMContentLoaded', async () => {
+    const authenticated = await requireAuth();
+    if (!authenticated) return;
+
+    const nameEl = document.getElementById('auth-user-name');
+    const emailEl = document.getElementById('auth-user-email');
+    const meta = AUTH_USER.user_metadata || {};
+    if (nameEl) nameEl.textContent = meta.full_name || 'Adviser';
+    if (emailEl) emailEl.textContent = AUTH_USER.email || '';
+    const adviserInput = document.getElementById('input-adviser-name');
+    if (adviserInput) adviserInput.value = meta.full_name || '';
+
+    await loadConfirmations();
+  });
+
+  function rowToProposal(row) {
+    return {
+      dbId: row.id,
+      id: row.reference_no,
+      publicToken: row.public_token,
+      participantName: row.participant_name,
+      participantEmail: row.participant_email,
+      certificateNo: row.certificate_no,
+      adviserName: row.adviser_name,
+      operators: Array.isArray(row.operators) ? row.operators : [],
+      remarks: row.remarks || '',
+      status: row.status,
+      createdAt: row.created_at,
+      clientSignature: row.client_signature,
+      clientSignedAt: row.client_signed_at,
+      adviserSignature: row.adviser_signature,
+      adviserSignedAt: row.adviser_signed_at,
+      auditLog: Array.isArray(row.audit_log) ? row.audit_log : [],
+      auditEvents: []
+    };
+  }
+
+  async function loadConfirmations() {
+    const { data, error } = await supabaseClient
+      .from('confirmation_requests')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error(error);
+      showToast('Unable to load confirmations from Supabase.', 'error');
+      proposals = [];
+    } else {
+      proposals = (data || []).map(rowToProposal);
+
+      const { data: auditData, error: auditError } = await supabaseClient
+        .from('confirmation_audit_events')
+        .select('*')
+        .order('occurred_at', { ascending: true });
+
+      if (auditError) {
+        console.error(auditError);
+      } else {
+        const grouped = {};
+        (auditData || []).forEach(event => {
+          if (!grouped[event.confirmation_id]) grouped[event.confirmation_id] = [];
+          grouped[event.confirmation_id].push(event);
+        });
+        proposals.forEach(p => { p.auditEvents = grouped[p.dbId] || []; });
+      }
+    }
+    renderAdviserTable();
+    updateStats();
+  }
+
+  function switchRole(role, docId) {
+    currentRole = role;
+    const viewAdviser = document.getElementById('view-adviser');
+    const viewReview = document.getElementById('view-review');
+    viewAdviser.classList.add('hidden');
+    viewReview.classList.add('hidden');
+
+    if (role === 'adviser') {
+      viewAdviser.classList.remove('hidden');
+      loadConfirmations();
+    } else if (role === 'review') {
+      viewReview.classList.remove('hidden');
+      renderAdviserReviewView(docId);
+    }
+  }
+
+  // ---------- Adviser Table ----------
+  function hasAdPdfBeenSent(prop) {
+    return Array.isArray(prop?.auditEvents) && prop.auditEvents.some(event =>
+      event?.event_type === 'EMAIL_SENT' && event?.metadata?.purpose === 'AD_CLOSED_PDF'
+    );
+  }
+
+  function renderAdviserTable() {
+    const tbody = document.getElementById('documents-table-body');
+    tbody.innerHTML = '';
+
+    if (proposals.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="5" class="px-6 py-8 text-center text-slate-400">No confirmation forms created yet. Click "New Confirmation Form" to begin.</td></tr>`;
+      return;
+    }
+
+    proposals.forEach(prop => {
+      const tr = document.createElement('tr');
+      tr.className = 'hover:bg-slate-50/80 transition-colors';
+
+      let statusBadge = '';
+      if (prop.status === 'AWAITING_CLIENT') {
+        statusBadge = `<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200"><i class="fa-solid fa-hourglass-start mr-1.5 text-[10px]"></i> Awaiting Client</span>`;
+      } else if (prop.status === 'AWAITING_ADVISER') {
+        statusBadge = `<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200"><i class="fa-solid fa-pen-nib mr-1.5 text-[10px]"></i> Needs Adviser Sign</span>`;
+      } else {
+        statusBadge = `<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200"><i class="fa-solid fa-circle-check mr-1.5 text-[10px]"></i> Closed &amp; Verified</span>`;
+      }
+
+      const dateStr = new Date(prop.createdAt).toLocaleDateString('en-MY', { month: 'short', day: 'numeric', year: 'numeric' });
+
+      tr.innerHTML = `
+        <td class="px-6 py-4">
+          <div class="font-bold text-slate-900">${escapeHtml(prop.participantName)}</div>
+          <div class="text-xs text-slate-400">${escapeHtml(prop.participantEmail || '')}</div>
+          <div class="text-xs text-slate-400 font-mono mt-0.5">${prop.id}</div>
+        </td>
+        <td class="px-6 py-4 text-slate-700">${escapeHtml(prop.certificateNo)}</td>
+        <td class="px-6 py-4 text-xs text-slate-500">${dateStr}</td>
+        <td class="px-6 py-4">${statusBadge}</td>
+        <td class="px-6 py-4 text-right space-x-1">
+          ${prop.status === 'AWAITING_CLIENT' ? `
+            <button onclick="shareProposalLink('${prop.id}')" title="Copy / Send Client Link" class="p-2 text-brand-navy hover:bg-slate-100 rounded-lg text-xs font-semibold transition-colors">
+              <i class="fa-solid fa-share-nodes text-sm"></i> Link
+            </button>
+` : ''}
+          ${prop.status === 'AWAITING_ADVISER' ? `
+            <button onclick="switchRole('review', '${prop.id}')" class="px-3 py-1.5 bg-brand-navy hover:opacity-90 text-white rounded-lg text-xs font-semibold shadow-sm transition-all inline-flex items-center space-x-1">
+              <i class="fa-solid fa-pen-fancy"></i><span>Sign &amp; Close</span>
+            </button>` : ''}
+          ${prop.status === 'CLOSED' ? `
+            <button onclick="switchRole('review', '${prop.id}')" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition-all inline-flex items-center space-x-1">
+              <i class="fa-solid fa-file-invoice"></i><span>View Cert</span>
+            </button>
+            <button id="ad-send-btn-${prop.dbId}" onclick="sendClosedPdfToAD('${prop.id}')" class="px-3 py-1.5 bg-brand-navy hover:opacity-90 text-white rounded-lg text-xs font-semibold shadow-sm transition-all inline-flex items-center space-x-1">
+              <i class="fa-solid fa-paper-plane"></i><span>${hasAdPdfBeenSent(prop) ? 'Resend to AD' : 'Send to AD'}</span>
+            </button>` : ''}
+          <button onclick="deleteProposal('${prop.id}')" title="Delete" class="p-2 text-rose-500 hover:bg-rose-50 rounded-lg text-xs transition-colors">
+            <i class="fa-solid fa-trash"></i>
+          </button>
+        </td>`;
+      tbody.appendChild(tr);
+    });
+  }
+
+  function updateStats() {
+    document.getElementById('stat-total').innerText = proposals.length;
+    document.getElementById('stat-awaiting-client').innerText = proposals.filter(p => p.status === 'AWAITING_CLIENT').length;
+    document.getElementById('stat-awaiting-adviser').innerText = proposals.filter(p => p.status === 'AWAITING_ADVISER').length;
+    document.getElementById('stat-completed').innerText = proposals.filter(p => p.status === 'CLOSED').length;
+  }
+
+  async function deleteProposal(id) {
+    if (!confirm('Delete this confirmation form? This cannot be undone.')) return;
+    const doc = proposals.find(p => p.id === id);
+    if (!doc) return;
+    const { error } = await supabaseClient.from('confirmation_requests').delete().eq('id', doc.dbId);
+    if (error) {
+      console.error(error);
+      showToast('Unable to delete confirmation.', 'error');
+      return;
+    }
+    await loadConfirmations();
+    showToast('Confirmation form deleted.');
+  }
+
+  // ---------- Create Modal ----------
+  function openCreateModal() {
+    document.getElementById('modal-create').classList.remove('hidden');
+    document.getElementById('form-create-proposal').reset();
+    const meta = AUTH_USER?.user_metadata || {};
+    document.getElementById('input-adviser-name').value = meta.full_name || '';
+    renderOperatorSelects();
+  }
+
+  function closeCreateModal() {
+    document.getElementById('modal-create').classList.add('hidden');
+  }
+
+  function renderOperatorSelects(selected = []) {
+    const container = document.getElementById('operator-select-container');
+    container.innerHTML = '';
+    for (let i = 0; i < 3; i++) {
+      const div = document.createElement('div');
+      div.className = 'flex items-center space-x-2 bg-slate-50 p-2 rounded-xl border border-slate-200';
+      const opts = OPERATORS.map(op => `<option value="${escapeHtml(op)}" ${selected[i] === op ? 'selected' : ''}>${escapeHtml(op)}</option>`).join('');
+      div.innerHTML = `
+        <span class="text-xs font-semibold text-slate-400 w-5">${i + 1}.</span>
+        <select data-idx="${i}" class="operator-select flex-1 bg-white px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-1 ring-brand">
+          <option value="">-- Select Takaful Operator --</option>
+          ${opts}
+        </select>`;
+      container.appendChild(div);
+    }
+  }
+
+  async function handleCreateProposal(e) {
+    e.preventDefault();
+    const participantName = document.getElementById('input-participant-name').value.trim();
+    const participantEmail = document.getElementById('input-participant-email').value.trim();
+    const certificateNo = document.getElementById('input-certificate-no').value.trim();
+    const adviserName = document.getElementById('input-adviser-name').value.trim();
+    const remarks = document.getElementById('input-remarks').value.trim();
+    const operators = Array.from(document.querySelectorAll('.operator-select')).map(s => s.value).filter(Boolean);
+
+    if (operators.length !== 3) return showToast('Please select 3 Takaful operators.', 'error');
+    if (new Set(operators).size !== 3) return showToast('Please select 3 different Takaful operators.', 'error');
+
+    const referenceNo = 'TSIWP-' + Date.now().toString(36).toUpperCase() + '-' + Math.floor(1000 + Math.random() * 9000);
+    const auditLog = [{ action: 'Confirmation form created by adviser', timestamp: new Date().toLocaleString('en-MY') }];
+
+    const { data, error } = await supabaseClient
+      .from('confirmation_requests')
+      .insert({
+        reference_no: referenceNo,
+        adviser_id: AUTH_USER.id,
+        participant_name: participantName,
+        participant_email: participantEmail,
+        certificate_no: certificateNo,
+        adviser_name: adviserName,
+        operators,
+        remarks,
+        status: 'AWAITING_CLIENT',
+        audit_log: auditLog
+      })
+      .select('*')
+      .single();
+
+    if (error) {
+      console.error(error);
+      showToast('Unable to save confirmation to Supabase.', 'error');
+      return;
+    }
+
+    proposals.unshift(rowToProposal(data));
+    updateStats();
+    renderAdviserTable();
+    closeCreateModal();
+    shareProposalLink(referenceNo);
+    showToast('Confirmation form created!');
+  }
+
+  // ---------- Share Modal ----------
+  function shareProposalLink(id) {
+    activeProposalId = id;
+    const doc = proposals.find(p => p.id === id);
+    
+  const url = new URL(
+  `confirmation.html?token=${doc.publicToken}`,
+  window.location.href
+  ).href;
+
+    document.getElementById('share-link-input').value = url;
+    const emailLabel = document.getElementById('email-share-btn-label');
+    if (emailLabel) {
+      emailLabel.innerText = doc && doc.participantEmail ? `Send Link to ${doc.participantEmail}` : `Send Link to Participant's Email`;
+    }
+    document.getElementById('modal-share').classList.remove('hidden');
+  }
+
+  function closeShareModal() {
+    document.getElementById('modal-share').classList.add('hidden');
+  }
+
+  function copyShareLink() {
+    const input = document.getElementById('share-link-input');
+    input.select();
+    navigator.clipboard.writeText(input.value).then(() => showToast('Link copied to clipboard!'));
+  }
+
+  async function emailShareLink() {
+    const doc = proposals.find(p => p.id === activeProposalId);
+    if (!doc) return;
+    if (!doc.participantEmail) {
+      showToast('No participant email on file for this form.', 'error');
+      return;
+    }
+
+    const btn = document.getElementById('email-share-btn');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i><span>Sending...</span>';
+    }
+
+    const { data, error } = await supabaseClient.functions.invoke('send-confirmation-email', {
+      body: { confirmationId: doc.dbId }
+    });
+
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-envelope"></i><span id="email-share-btn-label">Send Link to Participant\'s Email</span>';
+      const label = document.getElementById('email-share-btn-label');
+      if (label) label.textContent = `Send Link to ${doc.participantEmail}`;
+    }
+
+    if (error) {
+      console.error(error);
+      let message = 'Unable to send the confirmation email.';
+      try {
+        if (error.context && typeof error.context.json === 'function') {
+          const detail = await error.context.json();
+          if (detail?.error) message = detail.error;
+        }
+      } catch (_) {}
+      showToast(message, 'error');
+      return;
+    }
+
+    if (!data?.success) {
+      showToast(data?.error || 'Unable to send the confirmation email.', 'error');
+      return;
+    }
+
+    showToast(`Confirmation email sent to ${data.recipient || doc.participantEmail}.`);
+    await loadConfirmations();
+  }
+
+  function simulateClientOpen() {
+    const input = document.getElementById('share-link-input');
+    if (input && input.value) window.open(input.value, '_blank', 'noopener');
+  }
+
+  // ---------- Adviser Review / Counter-Sign View ----------
+  function renderAdviserReviewView(docId) {
+    activeProposalId = docId;
+    const doc = proposals.find(p => p.id === docId);
+    const container = document.getElementById('review-view-container');
+    if (!doc) {
+      container.innerHTML = `<div class="text-center py-12 text-slate-500">Confirmation form not found.</div>`;
+      return;
+    }
+    const isClosed = doc.status === 'CLOSED';
+    const operatorRows = doc.operators.map((op, i) => `
+      <div class="flex items-center justify-between px-4 py-3 border border-slate-200 rounded-lg bg-slate-50">
+        <span class="text-sm text-slate-700"><span class="text-slate-400 mr-2">${i + 1}.</span>${escapeHtml(op)}</span>
+        <i class="fa-solid fa-square-check text-brand-navy"></i>
+      </div>`).join('');
+
+    container.innerHTML = `
+      <div class="flex justify-between items-start border-b border-slate-100 pb-6">
+        <div class="flex items-center space-x-3">
+          <img src="data:image/png;base64,${LOGO_BASE64}" alt="TSI Wealth Planners" class="h-8">
+          <div>
+            <h2 class="text-base font-bold text-slate-900 uppercase">Confirmation of Recommended Solutions</h2>
+            <p class="text-xs text-slate-500">Ref: ${doc.id}</p>
+          </div>
+        </div>
+        <button onclick="switchRole('adviser')" class="text-xs text-slate-500 hover:text-slate-800 no-print">
+          <i class="fa-solid fa-arrow-left mr-1"></i> Back to Dashboard
+        </button>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
+          <p class="text-xs text-slate-400 uppercase font-semibold">Name of Participant</p>
+          <p class="text-sm font-bold text-slate-800 mt-0.5">${escapeHtml(doc.participantName)}</p>
+        </div>
+        <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
+          <p class="text-xs text-slate-400 uppercase font-semibold">Certificate No.</p>
+          <p class="text-sm font-bold text-slate-800 mt-0.5">${escapeHtml(doc.certificateNo)}</p>
+        </div>
+      </div>
+
+      <div class="space-y-2">${operatorRows}</div>
+
+      ${doc.remarks ? `
+        <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
+          <p class="text-xs text-slate-400 uppercase font-semibold">Remarks</p>
+          <p class="text-sm text-slate-700 mt-0.5">${escapeHtml(doc.remarks)}</p>
+        </div>` : ''}
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div class="border border-slate-200 rounded-xl p-4 space-y-2">
+          <p class="text-xs font-semibold text-slate-500 uppercase">Signed by the Participant</p>
+          ${doc.clientSignature ? `
+            <img src="${doc.clientSignature}" class="h-16 border-b border-slate-300">
+            <p class="text-[11px] text-slate-400">${new Date(doc.clientSignedAt).toLocaleString()}</p>` : `<p class="text-xs text-slate-400">Awaiting participant signature</p>`}
+        </div>
+        <div class="border border-slate-200 rounded-xl p-4 space-y-2">
+          <p class="text-xs font-semibold text-slate-500 uppercase">Signed by IFAR</p>
+          ${isClosed ? `
+            <img src="${doc.adviserSignature}" class="h-16 border-b border-slate-300">
+            <p class="text-[11px] text-slate-400">${escapeHtml(doc.adviserName)} &middot; ${new Date(doc.adviserSignedAt).toLocaleString()}</p>` : `
+            <div class="bg-white border-2 border-dashed border-slate-300 rounded-xl relative">
+              <canvas id="adviser-sig-canvas" class="sig-canvas w-full" style="height:96px;"></canvas>
+              <span id="adviser-sig-placeholder" class="absolute inset-0 flex items-center justify-center text-slate-300 text-xs pointer-events-none">Sign here</span>
+            </div>
+            <p class="text-[11px] text-slate-400">FAR Name: ${escapeHtml(doc.adviserName)} &middot; Date: ${new Date().toLocaleDateString()}</p>
+            <div class="flex justify-between items-center pt-1">
+              <button type="button" onclick="clearAdviserSignature()" class="text-xs text-slate-500 hover:text-rose-600 font-medium"><i class="fa-solid fa-eraser mr-1"></i> Clear</button>
+              <button type="button" onclick="submitAdviserCounterSign()" class="px-4 py-2 rounded-lg bg-brand-navy hover:opacity-90 text-white text-xs font-medium shadow-sm inline-flex items-center space-x-1">
+                <i class="fa-solid fa-check"></i><span>Sign &amp; Close</span>
+              </button>
+            </div>`}
+        </div>
+      </div>
+
+      ${isClosed ? `
+        <div class="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+          <div>
+            <p class="text-xs font-bold uppercase tracking-wider text-emerald-700">Final Record Locked</p>
+            <p class="text-xs text-emerald-700/80 mt-0.5">Both signatures have been captured and this confirmation is closed.</p>
+          </div>
+          <i class="fa-solid fa-lock text-emerald-600"></i>
+        </div>
+        <div class="pt-2 no-print">
+          <button onclick="downloadCertificatePDF('${doc.id}')" class="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-sm font-semibold inline-flex items-center justify-center space-x-2">
+            <i class="fa-solid fa-file-pdf"></i><span>Download Final Closed PDF</span>
+          </button>
+        </div>
+        <div class="space-y-2 pt-2">
+          <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400">Audit Log</h4>
+          <div class="bg-slate-900 text-slate-300 p-4 rounded-xl text-xs font-mono space-y-2">
+            ${(doc.auditEvents && doc.auditEvents.length ? doc.auditEvents.map(event => `<div class="flex justify-between gap-4"><span class="text-emerald-400">&check; ${escapeHtml(auditEventLabel(event))}${event.actor_label ? ` <span class="text-slate-500">· ${escapeHtml(event.actor_label)}</span>` : ''}</span><span class="text-slate-500 shrink-0">${new Date(event.occurred_at).toLocaleString('en-MY')}</span></div>`).join('') : doc.auditLog.map(log => `<div class="flex justify-between"><span class="text-emerald-400">&check; ${escapeHtml(log.action)}</span><span class="text-slate-500">${escapeHtml(log.timestamp)}</span></div>`).join(''))}
+          </div>
+        </div>` : ''}
+    `;
+
+    if (!isClosed) setTimeout(initAdviserCanvas, 50);
+  }
+
+  function initAdviserCanvas() {
+    adviserSigCanvas = document.getElementById('adviser-sig-canvas');
+    if (!adviserSigCanvas) return;
+    adviserSigCtx = adviserSigCanvas.getContext('2d');
+    const rect = adviserSigCanvas.getBoundingClientRect();
+    adviserSigCanvas.width = rect.width;
+    adviserSigCanvas.height = 96;
+    adviserSigCtx.lineWidth = 2.5;
+    adviserSigCtx.lineCap = 'round';
+    adviserSigCtx.strokeStyle = '#1e1b4b';
+    attachSignatureHandlers(adviserSigCanvas, adviserSigCtx, 'adviser-sig-placeholder', v => isDrawingAdviser = v, () => isDrawingAdviser);
+  }
+
+  function clearAdviserSignature() {
+    if (!adviserSigCanvas) return;
+    adviserSigCtx.clearRect(0, 0, adviserSigCanvas.width, adviserSigCanvas.height);
+    const ph = document.getElementById('adviser-sig-placeholder');
+    if (ph) ph.style.display = 'flex';
+  }
+
+  async function submitAdviserCounterSign() {
+    const doc = proposals.find(p => p.id === activeProposalId);
+    if (!doc) return;
+    if (!doc.clientSignature) return showToast('Participant signature is still pending.', 'error');
+    if (isCanvasBlank(adviserSigCanvas)) return showToast('Please apply your signature to close.', 'error');
+
+    const signature = adviserSigCanvas.toDataURL('image/png');
+    const signedAt = new Date().toISOString();
+    const auditLog = [...(doc.auditLog || []), { action: 'Adviser signed (IFAR) & form closed', timestamp: new Date().toLocaleString('en-MY') }];
+    const { data, error } = await supabaseClient
+      .from('confirmation_requests')
+      .update({ adviser_signature: signature, adviser_signed_at: signedAt, status: 'CLOSED', audit_log: auditLog, updated_at: signedAt })
+      .eq('id', doc.dbId)
+      .eq('status', 'AWAITING_ADVISER')
+      .select('*')
+      .single();
+
+    if (error) {
+      console.error(error);
+      showToast('Unable to close this confirmation.', 'error');
+      return;
+    }
+
+    const refreshed = rowToProposal(data);
+    showToast('Form signed and closed successfully!');
+    await loadConfirmations();
+    renderAdviserReviewView(refreshed.id);
+    updateStats();
+  }
+
+
+  function auditEventLabel(event) {
+    if (event?.event_type === 'EMAIL_SENT' && event?.metadata?.purpose === 'AD_CLOSED_PDF') {
+      return 'Closed PDF sent to AD';
+    }
+    const labels = {
+      CREATED: 'Confirmation created',
+      EMAIL_SENT: 'Confirmation email sent',
+      CLIENT_VIEWED: 'Client opened secure link',
+      CLIENT_SIGNED: 'Client confirmed & signed',
+      ADVISER_SIGNED: 'Adviser countersigned',
+      CLOSED: 'Confirmation closed'
+    };
+    return labels[event?.event_type] || event?.event_type || 'Audit event';
+  }
+
+  // ---------- Shared signature canvas logic ----------
+  function attachSignatureHandlers(canvas, ctx, placeholderId, setDrawing, isDrawing) {
+    const placeholder = document.getElementById(placeholderId);
+    function getPos(e) {
+      const r = canvas.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      return { x: clientX - r.left, y: clientY - r.top };
+    }
+    function startDraw(e) {
+      setDrawing(true);
+      if (placeholder) placeholder.style.display = 'none';
+      const pos = getPos(e);
+      ctx.beginPath();
+      ctx.moveTo(pos.x, pos.y);
+    }
+    function draw(e) {
+      if (!isDrawing()) return;
+      e.preventDefault();
+      const pos = getPos(e);
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+    }
+    function stopDraw() { setDrawing(false); }
+    canvas.addEventListener('mousedown', startDraw);
+    canvas.addEventListener('mousemove', draw);
+    window.addEventListener('mouseup', stopDraw);
+    canvas.addEventListener('touchstart', startDraw);
+    canvas.addEventListener('touchmove', draw);
+    window.addEventListener('touchend', stopDraw);
+  }
+
+  function isCanvasBlank(canvas) {
+    const blank = document.createElement('canvas');
+    blank.width = canvas.width;
+    blank.height = canvas.height;
+    return canvas.toDataURL() === blank.toDataURL();
+  }
+
+  // ---------- PDF Generation ----------
+  function buildCertificatePDF(doc) {
+    if (!doc) return null;
+    if (doc.status !== 'CLOSED') {
+      showToast('The final PDF is available only after the confirmation is closed.', 'error');
+      return null;
+    }
+
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = 40;
+    const contentWidth = pageWidth - margin * 2;
+    const colGap = 20;
+    const colWidth = (contentWidth - colGap) / 2;
+    let y = 38;
+
+    const addFooter = (pageNo) => {
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(7.5);
+      pdf.setTextColor(120);
+      pdf.text(COMPANY_ADDRESS, pageWidth / 2, pageHeight - 32, { align: 'center' });
+      pdf.text(COMPANY_CONTACT, pageWidth / 2, pageHeight - 21, { align: 'center' });
+      pdf.text(`Final Record • ${doc.id} • Page ${pageNo}`, pageWidth / 2, pageHeight - 10, { align: 'center' });
+      pdf.setTextColor(0);
+    };
+
+    const fmtDateTime = (value) => {
+      if (!value) return '-';
+      return new Date(value).toLocaleString('en-MY', {
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit'
+      });
+    };
+
+    // Header
+    pdf.addImage('data:image/png;base64,' + LOGO_BASE64, 'PNG', pageWidth / 2 - 60, y, 120, 32);
+    y += 48;
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(13);
+    pdf.text('CONFIRMATION OF RECOMMENDED SOLUTIONS', pageWidth / 2, y, { align: 'center' });
+    y += 16;
+    pdf.text('FOR TAKAFUL PRODUCTS', pageWidth / 2, y, { align: 'center' });
+    y += 18;
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(8);
+    pdf.setTextColor(90);
+    pdf.text(`Final Closed Record • Ref: ${doc.id}`, pageWidth / 2, y, { align: 'center' });
+    pdf.setTextColor(0);
+    y += 22;
+
+    // Participant / certificate metadata
+    pdf.setDrawColor(180);
+    pdf.setLineWidth(0.5);
+    pdf.rect(margin, y, contentWidth, 48);
+    pdf.line(pageWidth / 2, y, pageWidth / 2, y + 48);
+    pdf.setFont('helvetica', 'italic');
+    pdf.setFontSize(8);
+    pdf.text('Name of Participant', margin + 8, y + 13);
+    pdf.text('Certificate No.', pageWidth / 2 + 8, y + 13);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(10);
+    pdf.text(pdf.splitTextToSize(doc.participantName || '-', colWidth - 12), margin + 8, y + 29);
+    pdf.text(pdf.splitTextToSize(doc.certificateNo || '-', colWidth - 12), pageWidth / 2 + 8, y + 29);
+    y += 60;
+
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(9);
+    const introText = "I hereby inform the Company that with regard to the above participant's application for a new certificate, I have provided the options from the following Takaful operator for the participant's consideration:";
+    const introLines = pdf.splitTextToSize(introText, contentWidth);
+    pdf.text(introLines, margin, y);
+    y += introLines.length * 12 + 12;
+
+    // Operator table
+    pdf.setFillColor(245, 245, 245);
+    pdf.rect(margin, y - 10, contentWidth, 20, 'F');
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(9);
+    pdf.text('No.', margin + 6, y + 3);
+    pdf.text('Takaful Operator Presented', margin + 42, y + 3);
+    pdf.text('Selected', pageWidth - margin - 46, y + 3);
+    y += 18;
+    pdf.setFont('helvetica', 'normal');
+    doc.operators.forEach((op, i) => {
+      pdf.line(margin, y - 9, pageWidth - margin, y - 9);
+      pdf.text(String(i + 1), margin + 8, y + 3);
+      pdf.text(pdf.splitTextToSize(op, contentWidth - 115), margin + 42, y + 3);
+      pdf.text('X', pageWidth - margin - 35, y + 3);
+      y += 20;
+    });
+    pdf.line(margin, y - 9, pageWidth - margin, y - 9);
+    y += 10;
+
+    if (doc.remarks) {
+      const remarkLines = pdf.splitTextToSize(doc.remarks, contentWidth - 16);
+      const remarkHeight = Math.max(42, 24 + remarkLines.length * 10);
+      pdf.rect(margin, y, contentWidth, remarkHeight);
+      pdf.setFont('helvetica', 'italic');
+      pdf.setFontSize(8);
+      pdf.text('Remarks', margin + 8, y + 13);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(9);
+      pdf.text(remarkLines, margin + 8, y + 28);
+      y += remarkHeight + 12;
+    }
+
+    // Signature section
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(9);
+    pdf.text('Participant Signature', margin, y);
+    pdf.text('IFAR Signature', margin + colWidth + colGap, y);
+    y += 8;
+    pdf.rect(margin, y, colWidth, 84);
+    pdf.rect(margin + colWidth + colGap, y, colWidth, 84);
+    if (doc.clientSignature) pdf.addImage(doc.clientSignature, 'PNG', margin + 8, y + 8, colWidth - 16, 42);
+    if (doc.adviserSignature) pdf.addImage(doc.adviserSignature, 'PNG', margin + colWidth + colGap + 8, y + 8, colWidth - 16, 42);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(7.5);
+    pdf.text(`Signed: ${fmtDateTime(doc.clientSignedAt)}`, margin + 8, y + 62);
+    pdf.text(`Participant: ${doc.participantName || '-'}`, margin + 8, y + 74);
+    pdf.text(`Signed: ${fmtDateTime(doc.adviserSignedAt)}`, margin + colWidth + colGap + 8, y + 62);
+    pdf.text(`IFAR: ${doc.adviserName || '-'}`, margin + colWidth + colGap + 8, y + 74);
+    y += 98;
+
+    // Regulatory clause + document status
+    const clauseText = 'Per Bank Negara Malaysia’s document Prudent and Professional Conduct by Financial Advisers under clause 12.1, an approved financial adviser shall provide suitable product options to meet customers’ needs from at least three (3) different licensed insurers or licensed takaful operators for each class of insurance or takaful business.';
+    const clauseLines = pdf.splitTextToSize(clauseText, contentWidth - 16);
+    const clauseHeight = 30 + clauseLines.length * 9;
+    pdf.rect(margin, y, contentWidth, clauseHeight);
+    pdf.setFont('helvetica', 'italic');
+    pdf.setFontSize(7.5);
+    pdf.text(clauseLines, margin + 8, y + 13);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(8);
+    pdf.text(`Document Status: CLOSED`, margin + 8, y + clauseHeight - 10);
+    pdf.setFont('helvetica', 'normal');
+    pdf.text(`Closed: ${fmtDateTime(doc.adviserSignedAt)}`, pageWidth - margin - 8, y + clauseHeight - 10, { align: 'right' });
+
+    addFooter(1);
+
+    // Page 2: Audit trail
+    const auditEvents = Array.isArray(doc.auditEvents) ? doc.auditEvents : [];
+    if (auditEvents.length) {
+      pdf.addPage();
+      y = 44;
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(14);
+      pdf.text('AUDIT TRAIL', margin, y);
+      pdf.setFontSize(8);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(90);
+      pdf.text(`Confirmation Ref: ${doc.id}`, margin, y + 15);
+      pdf.text(`Certificate No.: ${doc.certificateNo || '-'}`, margin, y + 27);
+      pdf.setTextColor(0);
+      y += 48;
+
+      auditEvents.forEach((event, idx) => {
+        if (y > pageHeight - 85) {
+          addFooter(pdf.internal.getNumberOfPages());
+          pdf.addPage();
+          y = 44;
+        }
+        const title = auditEventLabel(event);
+        const actor = event.actor_label || '-';
+        const when = fmtDateTime(event.occurred_at);
+        pdf.setDrawColor(210);
+        pdf.line(margin, y, pageWidth - margin, y);
+        y += 13;
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(9);
+        pdf.text(`${idx + 1}. ${title}`, margin, y);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(8);
+        pdf.text(`Actor: ${actor}`, margin + 16, y + 13);
+        pdf.text(`Timestamp: ${when}`, margin + 16, y + 25);
+        y += 42;
+      });
+      addFooter(pdf.internal.getNumberOfPages());
+    }
+
+    const safeCert = String(doc.certificateNo || doc.id).replace(/[^a-z0-9_-]+/gi, '-');
+    return { pdf, filename: `Final-Takaful-Confirmation-${safeCert}.pdf` };
+  }
+
+  function downloadCertificatePDF(docId) {
+    const doc = proposals.find(p => p.id === docId);
+    const built = buildCertificatePDF(doc);
+    if (!built) return;
+    built.pdf.save(built.filename);
+  }
+
+  async function sendClosedPdfToAD(docId) {
+    const doc = proposals.find(p => p.id === docId);
+    if (!doc || doc.status !== 'CLOSED') {
+      showToast('Only a closed confirmation can be sent to AD.', 'error');
+      return;
+    }
+
+    const button = document.getElementById(`ad-send-btn-${doc.dbId}`);
+    const originalHtml = button?.innerHTML || '';
+    if (button) {
+      button.disabled = true;
+      button.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i><span>Sending...</span>';
+    }
+
+    try {
+      const built = buildCertificatePDF(doc);
+      if (!built) return;
+      const dataUri = built.pdf.output('datauristring');
+      const pdfBase64 = dataUri.includes(',') ? dataUri.split(',')[1] : dataUri;
+
+      const { data, error } = await supabaseClient.functions.invoke('send-confirmation-email', {
+        body: {
+          mode: 'ad_closed_pdf',
+          confirmationId: doc.dbId,
+          pdfBase64,
+          filename: built.filename
+        }
+      });
+
+      if (error) {
+        console.error(error);
+        let message = 'Unable to send the closed PDF to AD.';
+        try {
+          if (error.context && typeof error.context.json === 'function') {
+            const detail = await error.context.json();
+            if (detail?.error) message = detail.error;
+          }
+        } catch (_) {}
+        showToast(message, 'error');
+        return;
+      }
+
+      if (!data?.success) {
+        showToast(data?.error || 'Unable to send the closed PDF to AD.', 'error');
+        return;
+      }
+
+      showToast(`Closed PDF sent to AD${data.recipient ? ` (${data.recipient})` : ''}.`);
+      await loadConfirmations();
+    } finally {
+      if (button && document.body.contains(button)) {
+        button.disabled = false;
+        button.innerHTML = originalHtml;
+      }
+    }
+  }
+
+  // ---------- Utilities ----------
+  function showToast(message, type = 'success') {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    const bgColor = type === 'error' ? 'bg-rose-600' : 'bg-slate-900';
+    const icon = type === 'error' ? 'fa-circle-exclamation' : 'fa-circle-check';
+    toast.className = `${bgColor} text-white px-4 py-3 rounded-xl shadow-xl text-xs font-medium flex items-center space-x-2 border border-slate-700 transition-all transform translate-y-2 opacity-0`;
+    toast.innerHTML = `<i class="fa-solid ${icon}"></i><span>${escapeHtml(message)}</span>`;
+    container.appendChild(toast);
+    setTimeout(() => toast.classList.remove('translate-y-2', 'opacity-0'), 10);
+    setTimeout(() => { toast.classList.add('opacity-0'); setTimeout(() => toast.remove(), 300); }, 3500);
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m]));
+  }
+</script>
+</body>
+</html>
