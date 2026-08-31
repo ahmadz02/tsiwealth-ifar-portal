@@ -632,10 +632,6 @@
         </div>
 
         <div class="nav-row">
-          <div style="display:flex; flex-direction:column; gap:4px; margin-right:auto;">
-            <button type="button" class="btn btn-secondary" id="btnSaveDraft">Save Draft</button>
-            <span id="draftSaveStatus" style="font-size:11px; color:var(--ink-soft); min-height:14px;"></span>
-          </div>
           <button class="btn btn-secondary" id="btnBack">Back</button>
           <button class="btn btn-primary" id="btnNext">Next</button>
         </div>
@@ -665,10 +661,6 @@
 /* ===================== Claim / Refund Application — App Logic ===================== */
 
 let AUTH_USER = null;
-let CURRENT_CLAIM = null;
-let draftSaveTimer = null;
-let draftSaveInProgress = false;
-let draftSaveQueued = false;
 
 async function requireAuth() {
   if (typeof supabaseClient === 'undefined') {
@@ -712,38 +704,36 @@ async function saveClaimToSupabase(blob, claimRef) {
   const totalAmount = claimTotalAmount();
   const filePath =`${AUTH_USER.id}/${claimDate.slice(0, 4)}/${claimRef}.pdf`;
 
-  if (!CURRENT_CLAIM?.id) {
-    throw new Error('The draft claim record is unavailable. Please save the draft and try again.');
-  }
+  const { data: inserted, error: insertError } = await supabaseClient
+  .from('claim_records')
+  .insert({
+    adviser_id: AUTH_USER.id,
+    claim_ref: claimRef,
+    applicant_name: state.applicant.name.trim(),
+    claim_date: claimDate,
+    total_amount: totalAmount,
+    account_holder_name: state.bank.accountHolder.trim(),
+    account_number: state.bank.accountNumber.trim(),
+    status: 'DRAFT',
+    pdf_path: null
+  })
+  .select('*')
+  .single();
+
+  if (insertError) throw insertError;
 
   const { error: uploadError } = await supabaseClient.storage
     .from('claim-pdfs')
-    .upload(filePath, blob, { contentType: 'application/pdf', upsert: true });
+    .upload(filePath, blob, { contentType: 'application/pdf', upsert: false });
   if (uploadError) throw uploadError;
 
   const { data: updated, error: updateError } = await supabaseClient
     .from('claim_records')
-    .update({
-      applicant_name: state.applicant.name.trim(),
-      claim_date: claimDate,
-      total_amount: totalAmount,
-      account_holder_name: state.bank.accountHolder.trim(),
-      account_number: state.bank.accountNumber.trim(),
-      form_data: serializeDraftData(),
-      current_step: 'REVIEW',
-      draft_updated_at: new Date().toISOString(),
-      pdf_path: filePath,
-      status: 'READY',
-      updated_at: new Date().toISOString()
-    })
-    .eq('id', CURRENT_CLAIM.id)
-    .eq('adviser_id', AUTH_USER.id)
-    .eq('status', 'DRAFT')
+    .update({ pdf_path: filePath, status: 'READY', updated_at: new Date().toISOString() })
+    .eq('id', inserted.id)
     .select('*')
     .single();
   if (updateError) throw updateError;
-  CURRENT_CLAIM = updated;
-  clearTimeout(draftSaveTimer);
   return updated;
 }
 
@@ -801,7 +791,6 @@ const state = {
   applicant: { name: '', department: '', empId: '' },
   expenses: [ makeExpenseRow(1) ],
   files: [],
-  previousFileNames: [],
   bank: { bankName: '', accountHolder: '', accountNumber: '', email: '' },
   declarationDate: '',
   signatureDataUrl: '',
@@ -814,162 +803,6 @@ function isPdfFile(file) { return file.type === 'application/pdf' || /\.pdf$/i.t
 
 function makeExpenseRow(no) {
   return { no, date: '', category: '', description: '', amount: '' };
-}
-
-function serializeDraftData() {
-  return {
-    version: 1,
-    applicant: { ...state.applicant },
-    expenses: state.expenses.map((row, index) => ({
-      no: index + 1,
-      date: row.date || '',
-      category: row.category || '',
-      description: row.description || '',
-      amount: row.amount === undefined || row.amount === null ? '' : String(row.amount)
-    })),
-    bank: { ...state.bank },
-    declarationDate: state.declarationDate || '',
-    fileNames: state.files.length
-      ? state.files.map(file => file.name)
-      : state.previousFileNames.slice()
-  };
-}
-
-function applyDraftData(formData) {
-  const saved = formData && typeof formData === 'object' ? formData : {};
-  state.applicant = { ...state.applicant, ...(saved.applicant || {}) };
-  state.bank = { ...state.bank, ...(saved.bank || {}) };
-  state.expenses = Array.isArray(saved.expenses) && saved.expenses.length
-    ? saved.expenses.map((row, index) => ({ ...makeExpenseRow(index + 1), ...row, no: index + 1 }))
-    : [makeExpenseRow(1)];
-  state.declarationDate = saved.declarationDate || '';
-  state.files = [];
-  state.previousFileNames = Array.isArray(saved.fileNames) ? saved.fileNames.filter(Boolean) : [];
-  state.signatureDataUrl = '';
-  state.signatureCanvasSize = null;
-}
-
-function populateInputsFromState() {
-  $('#a-name').value = state.applicant.name || '';
-  $('#a-department').value = state.applicant.department || '';
-  $('#a-empId').value = state.applicant.empId || '';
-  $('#d-bankName').value = state.bank.bankName || '';
-  $('#d-accountHolder').value = state.bank.accountHolder || '';
-  $('#d-accountNumber').value = state.bank.accountNumber || '';
-  $('#d-email').value = state.bank.email || '';
-  $('#e-date').value = state.declarationDate || '';
-}
-
-function setDraftStatus(message, isError = false) {
-  const status = $('#draftSaveStatus');
-  if (!status) return;
-  status.textContent = message || '';
-  status.style.color = isError ? '#b42318' : 'var(--ink-soft)';
-}
-
-async function createDraftRecord() {
-  const claimRef = await generateClaimRef();
-  const today = new Date().toISOString().slice(0, 10);
-  const { data, error } = await supabaseClient
-    .from('claim_records')
-    .insert({
-      adviser_id: AUTH_USER.id,
-      claim_ref: claimRef,
-      applicant_name: '',
-      claim_date: today,
-      total_amount: 0,
-      account_holder_name: '',
-      account_number: '',
-      status: 'DRAFT',
-      pdf_path: null,
-      form_data: serializeDraftData(),
-      current_step: STEP_KEYS[state.step],
-      draft_updated_at: new Date().toISOString()
-    })
-    .select('*')
-    .single();
-  if (error) throw error;
-  CURRENT_CLAIM = data;
-  window.__currentClaimRef = data.claim_ref;
-  const url = new URL(window.location.href);
-  url.searchParams.set('id', data.id);
-  window.history.replaceState({}, '', url);
-}
-
-async function loadDraftRecord(id) {
-  const { data, error } = await supabaseClient
-    .from('claim_records')
-    .select('*')
-    .eq('id', id)
-    .eq('adviser_id', AUTH_USER.id)
-    .eq('status', 'DRAFT')
-    .single();
-  if (error) throw new Error('This draft could not be opened. It may have been completed, deleted, or belong to another adviser.');
-  CURRENT_CLAIM = data;
-  window.__currentClaimRef = data.claim_ref;
-  applyDraftData(data.form_data);
-  const savedStep = STEP_KEYS.indexOf(data.current_step);
-  // Signatures are deliberately not stored in drafts. Return a resumed
-  // REVIEW draft to Declaration so the applicant must sign again.
-  state.step = data.current_step === 'REVIEW' ? STEP_KEYS.indexOf('E') : (savedStep >= 0 ? savedStep : 0);
-}
-
-async function initializeDraftRecord() {
-  const id = new URLSearchParams(window.location.search).get('id');
-  if (id) await loadDraftRecord(id);
-  else await createDraftRecord();
-  setDraftStatus('Draft ready');
-}
-
-async function saveDraft({ showStatus = true } = {}) {
-  if (!CURRENT_CLAIM?.id || CURRENT_CLAIM.status !== 'DRAFT') return;
-  if (draftSaveInProgress) {
-    draftSaveQueued = true;
-    return;
-  }
-  draftSaveInProgress = true;
-  if (showStatus) setDraftStatus('Saving…');
-  try {
-    const now = new Date().toISOString();
-    const { data, error } = await supabaseClient
-      .from('claim_records')
-      .update({
-        applicant_name: state.applicant.name.trim(),
-        claim_date: state.declarationDate || new Date().toISOString().slice(0, 10),
-        total_amount: claimTotalAmount(),
-        account_holder_name: state.bank.accountHolder.trim(),
-        account_number: state.bank.accountNumber.trim(),
-        form_data: serializeDraftData(),
-        current_step: STEP_KEYS[state.step],
-        draft_updated_at: now,
-        updated_at: now
-      })
-      .eq('id', CURRENT_CLAIM.id)
-      .eq('adviser_id', AUTH_USER.id)
-      .eq('status', 'DRAFT')
-      .select('*')
-      .single();
-    if (error) throw error;
-    CURRENT_CLAIM = data;
-    if (showStatus) setDraftStatus(`Saved ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
-  } catch (error) {
-    console.error('Draft save failed', error);
-    setDraftStatus('Draft not saved — try again', true);
-    if (showStatus) throw error;
-  } finally {
-    draftSaveInProgress = false;
-    if (draftSaveQueued) {
-      draftSaveQueued = false;
-      scheduleDraftSave();
-    }
-  }
-}
-
-function scheduleDraftSave() {
-  if (!CURRENT_CLAIM?.id || CURRENT_CLAIM.status !== 'DRAFT') return;
-  clearTimeout(draftSaveTimer);
-  setDraftStatus('Unsaved changes');
-  draftSaveTimer = setTimeout(() => saveDraft({ showStatus: true }).catch(() => {}), 1200);
 }
 
 function $(sel, root) { return (root || document).querySelector(sel); }
@@ -1029,7 +862,6 @@ function renderExpenseTable() {
       const field = e.target.dataset.field;
       state.expenses[idx][field] = e.target.value;
       updateTotal();
-      scheduleDraftSave();
     });
   });
   $all('.remove-row', tbody).forEach(btn => {
@@ -1039,7 +871,6 @@ function renderExpenseTable() {
       state.expenses.forEach((r, i) => r.no = i + 1);
       renderExpenseTable();
       updateTotal();
-      scheduleDraftSave();
     });
   });
 
@@ -1054,10 +885,7 @@ function updateTotal() {
 function renderFileList() {
   const list = $('#fileList');
   if (state.files.length === 0) {
-    const previous = state.previousFileNames.length
-      ? `<div class="empty-hint"><strong>Documents must be selected again.</strong><br>This portal does not retain local files in a draft. Previously selected: ${state.previousFileNames.map(escapeHtml).join(', ')}</div>`
-      : '<div class="empty-hint">No files attached yet.</div>';
-    list.innerHTML = previous;
+    list.innerHTML = '<div class="empty-hint">No files attached yet.</div>';
     return;
   }
   list.innerHTML = state.files.map((f, idx) => {
@@ -1079,9 +907,7 @@ function renderFileList() {
     btn.addEventListener('click', (e) => {
       const idx = parseInt(e.target.dataset.idx, 10);
       state.files.splice(idx, 1);
-      state.previousFileNames = state.files.map(file => file.name);
       renderFileList();
-      scheduleDraftSave();
     });
   });
 }
@@ -1314,7 +1140,6 @@ async function goNext() {
   if (state.step < STEP_KEYS.length - 1) {
     state.step++;
     renderStep();
-    await saveDraft({ showStatus: false });
   }
 }
 
@@ -1322,7 +1147,6 @@ function goBack() {
   if (state.step > 0) {
     state.step--;
     renderStep();
-    scheduleDraftSave();
   }
 }
 
@@ -1346,10 +1170,7 @@ async function generatePDF() {
       throw new Error('Supabase client is not available. Check that supabase-config.js is in the same folder as this claim form.');
     }
 
-    if (!CURRENT_CLAIM?.id) await initializeDraftRecord();
-    clearTimeout(draftSaveTimer);
-    await saveDraft({ showStatus: false });
-    window.__currentClaimRef = CURRENT_CLAIM.claim_ref;
+    window.__currentClaimRef = await generateClaimRef();
     await buildAndMergePDF();
   } catch (err) {
     console.error('PDF generation failed', err);
@@ -1680,46 +1501,40 @@ function showSuccessScreen(fileName, blobUrl) {
     sendBtn.onclick = sendClaimToDept;
   }
   $('#btnDashboard').onclick = () => window.location.href = 'claim-dashboard.html';
-  $('#btnStartOver').onclick = () => window.location.href = 'claim_refund_form_5.html';
+  $('#btnStartOver').onclick = () => location.reload();
 }
 
 /* ---------------------- Init ---------------------- */
 
 function bindInputs() {
-  $('#a-name').addEventListener('input', e => { state.applicant.name = e.target.value; scheduleDraftSave(); });
-  $('#a-department').addEventListener('input', e => { state.applicant.department = e.target.value; scheduleDraftSave(); });
-  $('#a-empId').addEventListener('input', e => { state.applicant.empId = e.target.value; scheduleDraftSave(); });
+  $('#a-name').addEventListener('input', e => state.applicant.name = e.target.value);
+  $('#a-department').addEventListener('input', e => state.applicant.department = e.target.value);
+  $('#a-empId').addEventListener('input', e => state.applicant.empId = e.target.value);
 
   $('#addExpenseRow').addEventListener('click', () => {
     state.expenses.push(makeExpenseRow(state.expenses.length + 1));
     renderExpenseTable();
-    scheduleDraftSave();
   });
 
   $('#fileInput').addEventListener('change', (e) => {
     const newFiles = Array.from(e.target.files);
     state.files = state.files.concat(newFiles);
-    state.previousFileNames = state.files.map(file => file.name);
     renderFileList();
-    scheduleDraftSave();
     e.target.value = '';
   });
 
   $('#addFileBtn').addEventListener('click', () => $('#fileInput').click());
 
-  $('#d-bankName').addEventListener('input', e => { state.bank.bankName = e.target.value; scheduleDraftSave(); });
-  $('#d-accountHolder').addEventListener('input', e => { state.bank.accountHolder = e.target.value; scheduleDraftSave(); });
-  $('#d-accountNumber').addEventListener('input', e => { state.bank.accountNumber = e.target.value; scheduleDraftSave(); });
-  $('#d-email').addEventListener('input', e => { state.bank.email = e.target.value; scheduleDraftSave(); });
+  $('#d-bankName').addEventListener('input', e => state.bank.bankName = e.target.value);
+  $('#d-accountHolder').addEventListener('input', e => state.bank.accountHolder = e.target.value);
+  $('#d-accountNumber').addEventListener('input', e => state.bank.accountNumber = e.target.value);
+  $('#d-email').addEventListener('input', e => state.bank.email = e.target.value);
 
-  $('#e-date').addEventListener('input', e => { state.declarationDate = e.target.value; scheduleDraftSave(); });
+  $('#e-date').addEventListener('input', e => state.declarationDate = e.target.value);
   bindSignaturePad();
 
   $('#btnNext').addEventListener('click', goNext);
   $('#btnBack').addEventListener('click', goBack);
-  $('#btnSaveDraft').addEventListener('click', () => saveDraft({ showStatus: true }).catch(error => {
-    alert(`Unable to save draft.\n\n${error?.message || 'Please try again.'}`);
-  }));
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -1728,15 +1543,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (!authenticated) return;
 
   bindInputs();
-  try {
-    await initializeDraftRecord();
-    populateInputsFromState();
-    renderStep();
-  } catch (error) {
-    console.error('Draft initialization failed', error);
-    alert(error?.message || 'Unable to create or load the claim draft.');
-    window.location.replace('claim-dashboard.html');
-  }
+  renderStep();
 });
 </script>
 </body>
