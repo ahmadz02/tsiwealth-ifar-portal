@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSI Wealth Planners - Claim / Refund Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../supabase-config.js"></script>
+<style>
+  body { font-family: 'Inter', sans-serif; }
+  .brand-navy { color: #212F6E; }
+  .bg-brand-navy { background-color: #212F6E; }
+  .brand-gold { color: #FFCB08; }
+  .bg-brand-gold { background-color: #FFCB08; }
+  .filter-chip.active { background:#212F6E; color:white; border-color:#212F6E; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+
+<header class="bg-brand-navy text-white shadow-md sticky top-0 z-40">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+    <div class="flex items-center space-x-3">
+      <div class="bg-white/10 p-2 rounded-lg text-yellow-300">
+        <i class="fa-solid fa-file-invoice-dollar text-xl"></i>
+      </div>
+      <div>
+        <h1 class="font-bold text-lg leading-none">TSI Wealth Planners</h1>
+        <span class="text-xs text-slate-300">Claim / Refund Management Dashboard</span>
+      </div>
+    </div>
+
+    <a href="../index.html"
+  class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-white transition-all flex items-center gap-2">
+
+  <i class="fa-solid fa-table-cells-large"></i>
+  <span class="hidden sm:inline">Adviser Portal</span>
+  </a>
+
+
+    <div class="flex items-center gap-3">
+      <div class="hidden sm:block text-right">
+        <p id="auth-user-name" class="text-xs font-semibold text-white">User</p>
+        <p id="auth-user-email" class="text-[10px] text-slate-300"></p>
+      </div>
+      <button id="logoutBtn" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-white transition-all flex items-center gap-2">
+        <i class="fa-solid fa-right-from-bracket"></i><span>Logout</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div id="toast-container" class="fixed top-20 right-4 z-50 flex flex-col space-y-2 max-w-sm"></div>
+
+<main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+  <section class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+    <div>
+      <p class="text-xs font-bold uppercase tracking-wider brand-gold">Claims Administration</p>
+      <h2 class="text-2xl font-bold text-slate-900 mt-1">Claim / Refund Summary</h2>
+      <p class="text-slate-500 text-sm mt-1">Monitor claim activity, amounts and processing status by year, month or custom date range.</p>
+    </div>
+    <a href="claim_refund_form_5.html" class="inline-flex items-center justify-center bg-brand-navy hover:opacity-90 text-white font-semibold px-5 py-2.5 rounded-xl shadow-sm transition-all space-x-2">
+      <i class="fa-solid fa-plus"></i><span>New Claim</span>
+    </a>
+  </section>
+
+  <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+    <div class="flex flex-col gap-4">
+      <div class="flex flex-wrap gap-2">
+        <button type="button" data-preset="all" class="filter-chip active px-3.5 py-2 rounded-lg border border-slate-200 text-xs font-semibold">All Time</button>
+        <button type="button" data-preset="this-year" class="filter-chip px-3.5 py-2 rounded-lg border border-slate-200 text-xs font-semibold">This Year</button>
+        <button type="button" data-preset="this-month" class="filter-chip px-3.5 py-2 rounded-lg border border-slate-200 text-xs font-semibold">This Month</button>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+        <div>
+          <label for="filter-year" class="block text-xs font-semibold text-slate-600 mb-1">Year</label>
+          <select id="filter-year" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-400">
+            <option value="">All years</option>
+          </select>
+        </div>
+        <div>
+          <label for="filter-month" class="block text-xs font-semibold text-slate-600 mb-1">Month</label>
+          <select id="filter-month" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-400">
+            <option value="">All months</option>
+            <option value="01">January</option><option value="02">February</option><option value="03">March</option>
+            <option value="04">April</option><option value="05">May</option><option value="06">June</option>
+            <option value="07">July</option><option value="08">August</option><option value="09">September</option>
+            <option value="10">October</option><option value="11">November</option><option value="12">December</option>
+          </select>
+        </div>
+        <div>
+          <label for="filter-from" class="block text-xs font-semibold text-slate-600 mb-1">From</label>
+          <input id="filter-from" type="date" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-400">
+        </div>
+        <div>
+          <label for="filter-to" class="block text-xs font-semibold text-slate-600 mb-1">To</label>
+          <input id="filter-to" type="date" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-400">
+        </div>
+        <div class="flex gap-2">
+          <button id="apply-filter" class="flex-1 bg-brand-navy hover:opacity-90 text-white rounded-xl px-4 py-2.5 text-sm font-semibold">Apply</button>
+          <button id="reset-filter" class="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-600 text-sm font-semibold hover:bg-slate-50" title="Reset filters"><i class="fa-solid fa-rotate-left"></i></button>
+        </div>
+      </div>
+      <div id="filter-caption" class="text-xs text-slate-500">Showing all claim records.</div>
+    </div>
+  </section>
+
+  <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
+      <div class="w-11 h-11 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center"><i class="fa-solid fa-folder-open"></i></div>
+      <div><p class="text-xs text-slate-500">Total Claims</p><p id="stat-total" class="text-2xl font-bold text-slate-900">0</p></div>
+    </div>
+    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
+      <div class="w-11 h-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center"><i class="fa-solid fa-clock"></i></div>
+      <div><p class="text-xs text-slate-500">Submitted / Processing</p><p id="stat-pending" class="text-2xl font-bold text-slate-900">0</p></div>
+    </div>
+    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
+      <div class="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center"><i class="fa-solid fa-circle-check"></i></div>
+      <div><p class="text-xs text-slate-500">Completed</p><p id="stat-completed" class="text-2xl font-bold text-slate-900">0</p></div>
+    </div>
+    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
+      <div class="w-11 h-11 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center"><i class="fa-solid fa-ringgit-sign"></i></div>
+      <div><p class="text-xs text-slate-500">Total Claimed</p><p id="stat-amount" class="text-xl font-bold text-slate-900">RM 0.00</p></div>
+    </div>
+  </section>
+
+  <section class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+    <div class="px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-slate-50/50">
+      <div><h3 class="font-semibold text-slate-800">Claim Records</h3><p id="record-count" class="text-xs text-slate-500 mt-0.5">0 records</p></div>
+      <div class="relative w-full sm:w-72">
+        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+        <input id="search-input" type="search" placeholder="Search ref, applicant, account..." class="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-300 text-sm bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-400">
+      </div>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-left text-sm min-w-[920px]">
+        <thead class="bg-slate-50 text-slate-500 uppercase text-xs">
+          <tr>
+            <th class="px-6 py-3 font-semibold">Claim Ref & Applicant</th>
+            <th class="px-6 py-3 font-semibold">Claim Date</th>
+            <th class="px-6 py-3 font-semibold text-right">Amount</th>
+            <th class="px-6 py-3 font-semibold">Account Holder</th>
+            <th class="px-6 py-3 font-semibold">Account Number</th>
+            <th class="px-6 py-3 font-semibold">Status</th>
+            <th class="px-6 py-3 font-semibold text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="claims-table-body" class="divide-y divide-slate-100"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script>
+let AUTH_USER = null;
+let allClaims = [];
+let filteredClaims = [];
+
+function showToast(message, type = 'success') {
+  const container = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.className = `${type === 'error' ? 'bg-rose-600' : 'bg-slate-900'} text-white px-4 py-3 rounded-xl shadow-xl text-xs font-medium flex items-center gap-2`;
+  el.innerHTML = `<i class="fa-solid ${type === 'error' ? 'fa-circle-exclamation' : 'fa-circle-check'}"></i><span>${escapeHtml(message)}</span>`;
+  container.appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
+}
+
+function money(value) {
+  return new Intl.NumberFormat('en-MY', { style:'currency', currency:'MYR' }).format(Number(value) || 0);
+}
+
+function parseDateOnly(value) {
+  if (!value) return null;
+  const raw = String(value).slice(0,10);
+  const [y,m,d] = raw.split('-').map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(Date.UTC(y,m-1,d));
+}
+
+function displayDate(value) {
+  const d = parseDateOnly(value);
+  return d ? d.toLocaleDateString('en-MY', { day:'2-digit', month:'short', year:'numeric', timeZone:'UTC' }) : '—';
+}
+
+function normalizeClaim(row) {
+  return {
+    id: row.id,
+    claimRef: row.claim_ref || row.reference_no || row.id || '—',
+    applicantName: row.applicant_name || '',
+    accountHolderName: row.account_holder_name || '',
+    accountNumber: row.account_number || '',
+    claimDate: row.claim_date || (row.created_at ? String(row.created_at).slice(0,10) : ''),
+    totalAmount: Number(row.total_amount || 0),
+    status: String(row.status || 'SUBMITTED').toUpperCase(),
+    pdfPath: row.pdf_path || '',
+    createdAt: row.created_at || ''
+  };
+}
+
+async function requireAuth() {
+  if (typeof supabaseClient === 'undefined') {
+  window.location.replace('../login.html');
+  return false;
+  }
+  const { data, error } = await supabaseClient.auth.getUser();
+  if (error || !data?.user) {
+    window.location.replace('../login.html');
+    return false;
+  }
+  AUTH_USER = data.user;
+  const meta = AUTH_USER.user_metadata || {};
+  document.getElementById('auth-user-name').textContent = meta.full_name || 'User';
+  document.getElementById('auth-user-email').textContent = AUTH_USER.email || '';
+  return true;
+}
+
+async function loadClaims() {
+  if (typeof supabaseClient === 'undefined') {
+    allClaims = [];
+    populateYears();
+    applyFilters();
+    return;
+  }
+  const { data, error } = await supabaseClient
+  .from('claim_records')
+  .select('*')
+  .eq('adviser_id', AUTH_USER.id)
+  .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error(error);
+    allClaims = [];
+    populateYears();
+    applyFilters();
+    showToast('Unable to load claim records from Supabase.', 'error');
+    return;
+  }
+  allClaims = (data || []).map(normalizeClaim);
+  populateYears();
+  applyFilters();
+}
+
+function populateYears() {
+  const select = document.getElementById('filter-year');
+  const current = select.value;
+  const years = [...new Set(allClaims.map(c => String(c.claimDate || '').slice(0,4)).filter(Boolean))].sort((a,b) => b.localeCompare(a));
+  const nowYear = String(new Date().getFullYear());
+  if (!years.includes(nowYear)) years.unshift(nowYear);
+  select.innerHTML = '<option value="">All years</option>' + years.map(y => `<option value="${y}">${y}</option>`).join('');
+  if ([...select.options].some(o => o.value === current)) select.value = current;
+}
+
+function getRange() {
+  const year = document.getElementById('filter-year').value;
+  const month = document.getElementById('filter-month').value;
+  const from = document.getElementById('filter-from').value;
+  const to = document.getElementById('filter-to').value;
+  if (from || to) return { from: from || null, to: to || null, label: `${from ? displayDate(from) : 'Beginning'} to ${to ? displayDate(to) : 'Today'}` };
+  if (year && month) {
+    const last = new Date(Date.UTC(Number(year), Number(month), 0)).getUTCDate();
+    return { from:`${year}-${month}-01`, to:`${year}-${month}-${String(last).padStart(2,'0')}`, label:`${document.getElementById('filter-month').selectedOptions[0].text} ${year}` };
+  }
+  if (year) return { from:`${year}-01-01`, to:`${year}-12-31`, label:year };
+  return { from:null, to:null, label:'All time' };
+}
+
+function applyFilters() {
+  const range = getRange();
+  const fromDate = parseDateOnly(range.from);
+  const toDate = parseDateOnly(range.to);
+  const term = document.getElementById('search-input').value.trim().toLowerCase();
+  filteredClaims = allClaims.filter(c => {
+    const d = parseDateOnly(c.claimDate);
+    if (fromDate && (!d || d < fromDate)) return false;
+    if (toDate && (!d || d > toDate)) return false;
+    if (term) {
+      const hay = `${c.claimRef} ${c.applicantName} ${c.accountHolderName} ${c.accountNumber} ${c.status}`.toLowerCase();
+      if (!hay.includes(term)) return false;
+    }
+    return true;
+  });
+  document.getElementById('filter-caption').textContent = range.label === 'All time' ? 'Showing all claim records.' : `Showing claims for ${range.label}.`;
+  renderStats();
+  renderTable();
+}
+
+function renderStats() {
+  document.getElementById('stat-total').textContent = filteredClaims.length;
+  const pending = filteredClaims.filter(c => c.status !== 'SENT_TO_CLAIM_DEPT').length;
+  const completed = filteredClaims.filter(c => c.status === 'SENT_TO_CLAIM_DEPT').length;
+  document.getElementById('stat-pending').textContent = pending;
+  document.getElementById('stat-completed').textContent = completed;
+  document.getElementById('stat-amount').textContent = money(filteredClaims.reduce((sum,c) => sum + c.totalAmount, 0));
+  document.getElementById('record-count').textContent = `${filteredClaims.length} record${filteredClaims.length === 1 ? '' : 's'}`;
+}
+
+function statusBadge(status) {
+  const s = String(status || 'SUBMITTED').toUpperCase();
+  if (s === 'SENT_TO_CLAIM_DEPT') return `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200"><i class="fa-solid fa-circle-check text-[10px]"></i>${escapeHtml(s)}</span>`;
+  if (s === 'READY') return `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200"><i class="fa-solid fa-spinner text-[10px]"></i>READY</span>`;
+  return `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200"><i class="fa-solid fa-clock text-[10px]"></i>${escapeHtml(s)}</span>`;
+}
+
+function renderTable() {
+  const tbody = document.getElementById('claims-table-body');
+  if (!filteredClaims.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="px-6 py-12 text-center"><div class="text-slate-300 text-3xl mb-3"><i class="fa-regular fa-folder-open"></i></div><div class="text-slate-500 font-medium">No claims found</div><div class="text-xs text-slate-400 mt-1">Create a new claim or adjust the selected date range.</div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = filteredClaims.map(c => `
+    <tr class="hover:bg-slate-50/80 transition-colors">
+      <td class="px-6 py-4">
+        <div class="font-bold text-slate-900">${escapeHtml(c.applicantName || 'Unnamed applicant')}</div>
+        <div class="text-xs text-slate-400 font-mono mt-0.5">${escapeHtml(c.claimRef)}</div>
+      </td>
+      <td class="px-6 py-4 text-xs text-slate-500">${displayDate(c.claimDate)}</td>
+      <td class="px-6 py-4 text-right font-semibold text-slate-800">${money(c.totalAmount)}</td>
+      <td class="px-6 py-4 text-slate-700">${escapeHtml(c.accountHolderName || '—')}</td>
+      <td class="px-6 py-4 text-slate-700 font-mono text-xs">${escapeHtml(c.accountNumber || '—')}</td>
+      <td class="px-6 py-4">${statusBadge(c.status)}</td>
+      <td class="px-6 py-4 text-right">
+        ${c.pdfPath ? `<button type="button" onclick="openClaimPdf('${c.id}')" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold inline-flex items-center gap-1"><i class="fa-solid fa-file-pdf"></i><span>PDF</span></button>` : `<span class="text-xs text-slate-400">No PDF</span>`}
+      </td>
+    </tr>`).join('');
+}
+
+
+async function openClaimPdf(claimId) {
+  const claim = allClaims.find(c => String(c.id) === String(claimId));
+  if (!claim?.pdfPath) return;
+  const { data, error } = await supabaseClient.storage.from('claim-pdfs').createSignedUrl(claim.pdfPath, 300);
+  if (error || !data?.signedUrl) {
+    console.error(error);
+    showToast('Unable to open this claim PDF.', 'error');
+    return;
+  }
+  window.open(data.signedUrl, '_blank', 'noopener');
+}
+
+function setPreset(name) {
+  document.querySelectorAll('.filter-chip').forEach(b => b.classList.toggle('active', b.dataset.preset === name));
+  const now = new Date();
+  const y = String(now.getFullYear());
+  const m = String(now.getMonth()+1).padStart(2,'0');
+  document.getElementById('filter-from').value = '';
+  document.getElementById('filter-to').value = '';
+  if (name === 'all') { document.getElementById('filter-year').value=''; document.getElementById('filter-month').value=''; }
+  if (name === 'this-year') { document.getElementById('filter-year').value=y; document.getElementById('filter-month').value=''; }
+  if (name === 'this-month') { document.getElementById('filter-year').value=y; document.getElementById('filter-month').value=m; }
+  applyFilters();
+}
+
+document.querySelectorAll('.filter-chip').forEach(btn => btn.addEventListener('click', () => setPreset(btn.dataset.preset)));
+document.getElementById('apply-filter').addEventListener('click', () => { document.querySelectorAll('.filter-chip').forEach(b => b.classList.remove('active')); applyFilters(); });
+document.getElementById('reset-filter').addEventListener('click', () => setPreset('all'));
+document.getElementById('search-input').addEventListener('input', applyFilters);
+document.getElementById('filter-year').addEventListener('change', () => { if (!document.getElementById('filter-year').value) document.getElementById('filter-month').value=''; });
+document.getElementById('logoutBtn').addEventListener('click', async () => { if (typeof supabaseClient !== 'undefined') await supabaseClient.auth.signOut(); window.location.replace('../login.html'); });
+
+(async () => {
+  const ok = await requireAuth();
+  if (ok) await loadClaims();
+})();
+</script>
+</body>
+</html>
