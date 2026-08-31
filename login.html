@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TSI Wealth Portal - Login</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-config.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            tsi: {
+              50: '#f0f7ff',
+              100: '#e0effe',
+              500: '#1e3e62',
+              600: '#0b192c',
+              700: '#07101e',
+              accent: '#ffb800',
+              accentHover: '#e0a200'
+            }
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: linear-gradient(135deg, #07101e 0%, #0b192c 50%, #1e3e62 100%);
+      min-height: 100vh;
+    }
+    .glass-panel {
+      background: rgba(255,255,255,.96);
+      backdrop-filter: blur(16px);
+      box-shadow: 0 20px 40px rgba(0,0,0,.3);
+    }
+  </style>
+</head>
+<body class="text-slate-800 antialiased flex min-h-screen items-center justify-center p-4">
+  <main class="w-full max-w-md">
+    <div class="text-center mb-6">
+      <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-400 to-amber-200 flex items-center justify-center shadow-lg font-bold text-tsi-700 text-xl tracking-wider mx-auto mb-3">TSI</div>
+      <h1 class="text-white font-bold text-2xl tracking-tight">TSI WEALTH</h1>
+      <p class="text-amber-300 text-xs font-semibold tracking-widest uppercase mt-1">Takaful Confirmation Portal</p>
+    </div>
+
+    <section class="glass-panel rounded-2xl p-8 border border-white/20">
+      <div class="flex bg-slate-100 rounded-xl p-1 mb-7">
+        <button id="tab-login" type="button" onclick="showView('login')" class="flex-1 py-2 rounded-lg bg-white shadow-sm text-xs font-bold text-tsi-600">Sign In</button>
+        <button id="tab-register" type="button" onclick="showView('register')" class="flex-1 py-2 rounded-lg text-xs font-bold text-slate-500">Register</button>
+      </div>
+
+      <div id="view-login">
+        <div class="text-center mb-7">
+          <h2 class="text-2xl font-bold text-tsi-600">Member Sign In</h2>
+          <p class="text-slate-500 text-sm mt-1">Sign in to access the adviser dashboard.</p>
+        </div>
+
+        <form id="login-form" class="space-y-5">
+          <div>
+            <label for="login-email" class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Email Address</label>
+            <input type="email" id="login-email" required autocomplete="email" placeholder="name@example.com" class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-tsi-500/50 focus:border-tsi-500 transition text-sm">
+          </div>
+          <div>
+            <label for="login-password" class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Password</label>
+            <input type="password" id="login-password" required autocomplete="current-password" placeholder="••••••••" class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-tsi-500/50 focus:border-tsi-500 transition text-sm">
+          </div>
+          <button id="login-btn" type="submit" class="w-full py-3.5 px-4 bg-tsi-600 hover:bg-tsi-500 text-white font-semibold rounded-xl shadow-lg transition">Sign In</button>
+        </form>
+      </div>
+
+      <div id="view-register" class="hidden">
+        <div class="text-center mb-6">
+          <h2 class="text-2xl font-bold text-tsi-600">Adviser Registration</h2>
+          <p class="text-slate-500 text-sm mt-1">Create your single-tier adviser account.</p>
+        </div>
+
+        <form id="register-form" class="space-y-4">
+          <div>
+            <label for="reg-name" class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Full Name</label>
+            <input type="text" id="reg-name" required autocomplete="name" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-tsi-500/50 focus:border-tsi-500 text-sm">
+          </div>
+          <div>
+            <label for="reg-code" class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">TSI Wealth Code</label>
+            <input type="text" id="reg-code" required placeholder="e.g. TSI-88924" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-tsi-500/50 focus:border-tsi-500 text-sm uppercase font-mono">
+          </div>
+          <div>
+            <label for="reg-email" class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Email Address</label>
+            <input type="email" id="reg-email" required autocomplete="email" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-tsi-500/50 focus:border-tsi-500 text-sm">
+          </div>
+          <div>
+            <label for="reg-password" class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Password</label>
+            <input type="password" id="reg-password" required minlength="8" autocomplete="new-password" placeholder="Minimum 8 characters" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-tsi-500/50 focus:border-tsi-500 text-sm">
+          </div>
+          <button id="register-btn" type="submit" class="w-full py-3.5 px-4 bg-amber-400 hover:bg-amber-500 text-tsi-700 font-bold rounded-xl shadow-md transition">Create Account</button>
+        </form>
+      </div>
+
+      <div id="message-box" class="hidden mt-5 p-3 rounded-lg border text-xs font-semibold"></div>
+    </section>
+  </main>
+
+  <script>
+    const messageBox = document.getElementById('message-box');
+
+    function showMessage(message, type = 'error') {
+      messageBox.className = 'mt-5 p-3 rounded-lg border text-xs font-semibold';
+      if (type === 'success') messageBox.classList.add('bg-emerald-50','border-emerald-200','text-emerald-700');
+      else if (type === 'info') messageBox.classList.add('bg-blue-50','border-blue-200','text-blue-700');
+      else messageBox.classList.add('bg-rose-50','border-rose-200','text-rose-700');
+      messageBox.textContent = message;
+      messageBox.classList.remove('hidden');
+    }
+
+    function clearMessage() {
+      messageBox.classList.add('hidden');
+    }
+
+    function showView(view) {
+      clearMessage();
+      const loginView = document.getElementById('view-login');
+      const registerView = document.getElementById('view-register');
+      const loginTab = document.getElementById('tab-login');
+      const registerTab = document.getElementById('tab-register');
+      const active = 'flex-1 py-2 rounded-lg bg-white shadow-sm text-xs font-bold text-tsi-600';
+      const inactive = 'flex-1 py-2 rounded-lg text-xs font-bold text-slate-500';
+
+      if (view === 'register') {
+        loginView.classList.add('hidden');
+        registerView.classList.remove('hidden');
+        loginTab.className = inactive;
+        registerTab.className = active;
+      } else {
+        registerView.classList.add('hidden');
+        loginView.classList.remove('hidden');
+        registerTab.className = inactive;
+        loginTab.className = active;
+      }
+    }
+
+    async function checkExistingSession() {
+      const { data } = await supabaseClient.auth.getSession();
+      if (data.session) window.location.replace('index.html');
+    }
+
+    document.getElementById('login-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      clearMessage();
+
+      const button = document.getElementById('login-btn');
+      button.disabled = true;
+      button.textContent = 'Signing In...';
+
+      const email = document.getElementById('login-email').value.trim().toLowerCase();
+      const password = document.getElementById('login-password').value;
+
+      const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+
+      button.disabled = false;
+      button.textContent = 'Sign In';
+
+      if (error) {
+        showMessage(error.message);
+        return;
+      }
+
+      window.location.href = 'index.html';
+    });
+
+    document.getElementById('register-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      clearMessage();
+
+      const button = document.getElementById('register-btn');
+      button.disabled = true;
+      button.textContent = 'Creating Account...';
+
+      const name = document.getElementById('reg-name').value.trim();
+      const tsiCode = document.getElementById('reg-code').value.trim().toUpperCase();
+      const email = document.getElementById('reg-email').value.trim().toLowerCase();
+      const password = document.getElementById('reg-password').value;
+
+      const redirectTo = new URL('login.html', window.location.href).href;
+      const { data, error } = await supabaseClient.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: redirectTo,
+          data: {
+            full_name: name,
+            tsi_code: tsiCode
+          }
+        }
+      });
+
+      button.disabled = false;
+      button.textContent = 'Create Account';
+
+      if (error) {
+        showMessage(error.message);
+        return;
+      }
+
+      if (data.session) {
+        window.location.href = 'index.html';
+        return;
+      }
+
+      showMessage('Registration received. Please check your email and confirm your account before signing in.', 'success');
+      document.getElementById('register-form').reset();
+      showView('login');
+      showMessage('Account created. Confirm your email, then sign in.', 'success');
+    });
+
+    checkExistingSession();
+  </script>
+</body>
+</html>

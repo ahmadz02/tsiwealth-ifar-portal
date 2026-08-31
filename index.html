@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MyTakaful Services - Select Destination</title>
+
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!--load supabase-->
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-config.js"></script>
+
+    <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .sig-canvas { touch-action: none; cursor: crosshair; }
+    .brand-navy { color: #212F6E; }
+    .bg-brand-navy { background-color: #212F6E; }
+    .bg-brand-gold { background-color: #FFCB08; }
+    .border-brand-navy { border-color: #212F6E; }
+    .ring-brand { --tw-ring-color: #212F6E; }
+    @media print {
+        .no-print { display: none !important; }
+        .print-card { box-shadow: none !important; border: 1px solid #ccc !important; }
+    }
+    
+    /* Smooth custom scrollbars and transition tweaks */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen flex flex-col selection:bg-[#FFCB08] selection:text-[#212F6E]">
+
+  <!-- Top Navigation Header -->
+  <header class="bg-brand-navy text-white shadow-lg sticky top-0 z-50 border-b-2 border-[#FFCB08]">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      
+      <!-- Brand Logo / Identity -->
+      <div class="flex items-center space-x-3 cursor-pointer group">
+        <div class="bg-brand-gold text-slate-900 p-2 rounded-xl shadow-md group-hover:scale-105 transition-transform duration-200">
+          <i data-lucide="shield-check" class="w-6 h-6 brand-navy"></i>
+        </div>
+        <div>
+          <h1 class="font-extrabold text-lg leading-tight tracking-wide text-white group-hover:text-[#FFCB08] transition-colors">TSI Wealth <span class="text-[#FFCB08]">IFAR Access</span></h1>
+          <p class="text-xs text-slate-300 font-medium">Adviser Portal</p>
+        </div>
+      </div>
+      
+      <!-- Header Quick Actions & User Info -->
+      <div class="flex items-center space-x-3 sm:space-x-5">
+        <button class="text-xs sm:text-sm px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition flex items-center space-x-1.5 border border-white/10">
+          <i data-lucide="layout-dashboard" class="w-4 h-4 text-[#FFCB08]"></i>
+          <span class="hidden sm:inline font-medium">Portal Home</span>
+        </button>
+        
+        <div class="h-5 w-px bg-white/20"></div>
+
+        <div class="flex items-center space-x-3">
+          <div class="hidden md:flex flex-col text-right">
+          <span id="auth-user-name" class="text-xs font-semibold text-white">Adviser</span>
+          <span id="auth-user-email" class="text-[11px] text-[#FFCB08]"></span>
+          </div>
+          
+          <div id="auth-user-initials"
+            class="w-8 h-8 rounded-full bg-brand-gold brand-navy flex items-center justify-center font-bold text-xs shadow-inner">
+            AD</div>
+
+          <button title="Log out" onclick="logoutApp()" class="p-2 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition no-print">
+            <i data-lucide="log-out" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- Session Notification Banner -->
+  <section class="bg-[#212F6E]/5 border-b border-[#212F6E]/10 py-2.5 no-print">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between text-xs sm:text-sm">
+      <div class="flex items-center space-x-2 text-slate-700">
+        <span class="inline-flex items-center justify-center w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+        <span class="font-medium">Active Secure Session</span>
+        <span class="text-slate-400 hidden sm:inline">• ID: TKF-9402-2026</span>
+      </div>
+      <div class="flex items-center space-x-4 text-xs font-medium">
+        <span class="brand-navy bg-white px-2.5 py-1 rounded-md border border-[#212F6E]/10 shadow-xs">
+          Last login: <span class="font-bold">Today, 09:42 AM</span>
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Intermediate Landing Content -->
+  <main class="flex-grow flex flex-col items-center justify-center p-4 sm:p-6 lg:p-10">
+    <div class="w-full max-w-5xl mx-auto space-y-8">
+      
+      <!-- Title & Description Header -->
+      <div class="text-center max-w-2xl mx-auto space-y-3">
+        <span class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[#FFCB08] text-[#212F6E] shadow-sm border border-[#212F6E]/10">
+          <i data-lucide="lock" class="w-3.5 h-3.5"></i>
+          <span>Authenticated Customer Gateway</span>
+        </span>
+        <h2 class="text-3xl sm:text-4xl font-black brand-navy tracking-tight">Select Destination</h2>
+        <p class="text-slate-600 text-sm sm:text-base leading-relaxed">
+          Welcome back! Please choose the portal section you wish to access. You can safely return to this navigation hub at any time.
+        </p>
+      </div>
+
+      <!-- Main Action Cards Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
+
+        <!-- CARD 1: Claim Form -->
+        <div class="print-card bg-white rounded-2xl p-6 sm:p-8 shadow-sm hover:shadow-xl border border-slate-200/80 hover:border-brand-navy transition-all duration-300 flex flex-col justify-between group relative overflow-hidden">
+          <div class="absolute top-0 right-0 w-32 h-32 bg-[#212F6E]/5 rounded-bl-full -mr-6 -mt-6 group-hover:bg-[#FFCB08]/20 transition-colors duration-300"></div>
+          
+          <div>
+            <div class="flex items-center justify-between mb-6">
+              <div class="w-14 h-14 bg-brand-navy text-[#FFCB08] rounded-2xl flex items-center justify-center shadow-md group-hover:scale-110 group-hover:rotate-3 transition duration-300">
+                <i data-lucide="file-text" class="w-7 h-7"></i>
+              </div>
+              <span class="text-xs font-bold text-slate-400 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
+                MODULE 01
+              </span>
+            </div>
+            
+            <h3 class="text-2xl font-bold brand-navy group-hover:text-blue-900 transition">
+              Page 1: Claim Form
+            </h3>
+            <p class="text-slate-600 text-sm mt-3 leading-relaxed">
+              Submit new Takaful claims, upload supporting medical or incident documentation, review pending submissions, and track ongoing claim processing status in real time.
+            </p>
+
+            <ul class="mt-4 space-y-2 text-xs text-slate-500">
+              <li class="flex items-center space-x-2">
+                <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600"></i>
+                <span>Instant document upload support</span>
+              </li>
+              <li class="flex items-center space-x-2">
+                <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600"></i>
+                <span>Digital e-signature verification</span>
+              </li>
+            </ul>
+          </div>
+          
+          <div class="mt-8 pt-6 border-t border-slate-100 flex items-center justify-between">
+            <span class="text-xs font-semibold text-slate-400">Claims Portal</span>
+            <a href="claim/claims.html" class="bg-brand-navy hover:bg-[#182353] text-white hover:text-[#FFCB08] text-sm font-bold py-3 px-6 rounded-xl flex items-center space-x-2 transition-all shadow-md hover:shadow-lg hover:-translate-y-0.5 ring-brand focus:ring-2">
+              <span>Go to Claim Form</span>
+              <i data-lucide="arrow-right" class="w-4 h-4"></i>
+            </a>
+          </div>
+        </div>
+
+        <!-- CARD 2: Takaful Confirmation -->
+        <div class="print-card bg-white rounded-2xl p-6 sm:p-8 shadow-sm hover:shadow-xl border border-slate-200/80 hover:border-brand-navy transition-all duration-300 flex flex-col justify-between group relative overflow-hidden">
+          <div class="absolute top-0 right-0 w-32 h-32 bg-[#FFCB08]/10 rounded-bl-full -mr-6 -mt-6 group-hover:bg-[#212F6E]/10 transition-colors duration-300"></div>
+
+          <div>
+            <div class="flex items-center justify-between mb-6">
+              <div class="w-14 h-14 bg-brand-gold brand-navy rounded-2xl flex items-center justify-center shadow-md group-hover:scale-110 group-hover:-rotate-3 transition duration-300">
+                <i data-lucide="badge-check" class="w-7 h-7"></i>
+              </div>
+              <span class="text-xs font-bold text-slate-400 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
+                MODULE 02
+              </span>
+            </div>
+
+            <h3 class="text-2xl font-bold brand-navy group-hover:text-blue-900 transition">
+              Page 2: Takaful Confirmation
+            </h3>
+            <p class="text-slate-600 text-sm mt-3 leading-relaxed">
+              View active policy details, certificate status, contribution schedules, coverage confirmations, and download printable verification cards.
+            </p>
+
+            <ul class="mt-4 space-y-2 text-xs text-slate-500">
+              <li class="flex items-center space-x-2">
+                <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600"></i>
+                <span>Official PDF certificate generator</span>
+              </li>
+              <li class="flex items-center space-x-2">
+                <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600"></i>
+                <span>Contribution & payment history</span>
+              </li>
+            </ul>
+          </div>
+
+          <div class="mt-8 pt-6 border-t border-slate-100 flex items-center justify-between">
+            <span class="text-xs font-semibold text-slate-400">Policy Portal</span>
+            <a href="coo/takaful-coo.html" class="bg-brand-gold hover:bg-amber-400 brand-navy text-sm font-bold py-3 px-6 rounded-xl flex items-center space-x-2 transition-all shadow-md hover:shadow-lg hover:-translate-y-0.5 ring-brand focus:ring-2 border border-amber-300">
+              <span>Go to Confirmation</span>
+              <i data-lucide="arrow-right" class="w-4 h-4"></i>
+            </a>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Footer Quick Signout Links & Actions -->
+      <div class="pt-4 text-center space-y-3 no-print">
+        <div class="flex items-center justify-center space-x-6 text-xs text-slate-500 font-medium">
+          <button onclick="window.print()" class="hover:text-brand-navy flex items-center space-x-1 transition">
+            <i data-lucide="printer" class="w-3.5 h-3.5"></i>
+            <span>Print Portal Directory</span>
+          </button>
+          <span>•</span>
+          <a href="#" onclick="showToast('Help center loaded')" class="hover:text-brand-navy flex items-center space-x-1 transition">
+            <i data-lucide="help-circle" class="w-3.5 h-3.5"></i>
+            <span>Customer Support</span>
+          </a>
+          <span>•</span>
+          
+          <button type="button" onclick="logoutApp()" class="brand-navy font-semibold hover:underline">
+          Sign out of session</button>
+
+
+
+        </div>
+        <p class="text-xs text-slate-400">© 2026 MyTakaful Services Berhad. All rights reserved.</p>
+      </div>
+      
+    </div>
+  </main>
+
+  <!-- Toast Notification element -->
+  <div id="toast" class="fixed bottom-5 right-5 bg-brand-navy text-white px-4 py-3 rounded-xl shadow-xl transform translate-y-20 opacity-0 transition-all duration-300 flex items-center space-x-3 z-50 border border-[#FFCB08]/30">
+    <div class="w-2 h-2 rounded-full bg-[#FFCB08]"></div>
+    <span id="toastMsg" class="text-xs font-medium">Notification message</span>
+  </div>
+
+  <script>
+  async function requireAuth() {
+    const { data, error } = await supabaseClient.auth.getUser();
+
+    if (error || !data.user) {
+      window.location.replace('login.html');
+      return null;
+    }
+
+    return data.user;
+  }
+
+  async function initializePortal() {
+    const user = await requireAuth();
+
+    if (!user) return;
+
+    const nameElement = document.getElementById('auth-user-name');
+    const emailElement = document.getElementById('auth-user-email');
+    const initialsElement = document.getElementById('auth-user-initials');
+
+    const fullName = user.user_metadata?.full_name || 'Adviser';
+
+    if (nameElement) {
+      nameElement.textContent = fullName;
+    }
+
+    if (emailElement) {
+      emailElement.textContent = user.email || '';
+    }
+
+    if (initialsElement) {
+      initialsElement.textContent = fullName
+        .split(' ')
+        .filter(Boolean)
+        .slice(0, 2)
+        .map(name => name.charAt(0))
+        .join('')
+        .toUpperCase();
+    }
+  }
+
+  async function logoutApp() {
+    await supabaseClient.auth.signOut();
+    window.location.replace('login.html');
+  }
+
+  function showToast(message) {
+    const toast = document.getElementById('toast');
+    const toastMsg = document.getElementById('toastMsg');
+
+    if (toast && toastMsg) {
+      toastMsg.textContent = message;
+      toast.classList.remove('translate-y-20', 'opacity-0');
+
+      setTimeout(() => {
+        toast.classList.add('translate-y-20', 'opacity-0');
+      }, 3000);
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    if (window.lucide) {
+      lucide.createIcons();
+    }
+
+    initializePortal();
+  });
+</script>
+
+  
+
+</body>
+</html>
