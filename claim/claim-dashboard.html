@@ -302,10 +302,33 @@ function renderStats() {
 
 function statusBadge(status) {
   const s = String(status || 'SUBMITTED').toUpperCase();
-  if (s === 'SENT_TO_CLAIM_DEPT') return `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200"><i class="fa-solid fa-circle-check text-[10px]"></i>${escapeHtml(s)}</span>`;
-  if (s === 'READY') return `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200"><i class="fa-solid fa-spinner text-[10px]"></i>READY</span>`;
-  return `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200"><i class="fa-solid fa-clock text-[10px]"></i>${escapeHtml(s)}</span>`;
-}
+
+  if (s === 'SENT_TO_CLAIM_DEPT') {
+    return `
+      <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+        <i class="fa-solid fa-circle-check text-[10px]"></i>
+        SENT TO CLAIM DEPT
+      </span>
+    `;
+  }
+
+  if (s === 'READY') {
+    return `
+      <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+        <i class="fa-solid fa-spinner text-[10px]"></i>
+        READY
+      </span>
+    `;
+  }
+
+  if (s === 'DRAFT') {
+    return `
+      <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+        <i class="fa-solid fa-pen text-[10px]"></i>
+        DRAFT
+      </span>
+    `;
+  }
 
 function renderTable() {
   const tbody = document.getElementById('claims-table-body');
@@ -324,23 +347,160 @@ function renderTable() {
       <td class="px-6 py-4 text-slate-700">${escapeHtml(c.accountHolderName || '—')}</td>
       <td class="px-6 py-4 text-slate-700 font-mono text-xs">${escapeHtml(c.accountNumber || '—')}</td>
       <td class="px-6 py-4">${statusBadge(c.status)}</td>
+      
       <td class="px-6 py-4 text-right">
-        ${c.pdfPath ? `<button type="button" onclick="openClaimPdf('${c.id}')" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold inline-flex items-center gap-1"><i class="fa-solid fa-file-pdf"></i><span>PDF</span></button>` : `<span class="text-xs text-slate-400">No PDF</span>`}
+        <div class="inline-flex items-center justify-end gap-2">
+
+      ${c.status === 'DRAFT' ? `
+      <a
+        href="claim_refund_form_5.html?id=${encodeURIComponent(c.id)}"
+        class="px-3 py-1.5 bg-brand-navy hover:opacity-90 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1"
+      >
+        <i class="fa-solid fa-pen-to-square"></i>
+        <span>Edit</span>
+      </a>
+        ` : ''}
+
+      ${c.pdfPath ? `
+      <button
+        type="button"
+        onclick="openClaimPdf('${c.id}')"
+        class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold inline-flex items-center gap-1"
+        >
+        <i class="fa-solid fa-file-pdf"></i>
+        <span>PDF</span>
+        </button>
+        `  : ''}
+
+       ${['DRAFT', 'READY'].includes(c.status) ? `
+      <button
+        type="button"
+        onclick="deleteClaim('${c.id}')"
+        class="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition"
+        title="Delete claim"
+      >
+        <i class="fa-solid fa-trash"></i>
+      </button>
+    ` : ''}
+
+      </div>
       </td>
+
+
+
+
+
     </tr>`).join('');
 }
 
 
 async function openClaimPdf(claimId) {
-  const claim = allClaims.find(c => String(c.id) === String(claimId));
-  if (!claim?.pdfPath) return;
-  const { data, error } = await supabaseClient.storage.from('claim-pdfs').createSignedUrl(claim.pdfPath, 300);
+  const claim = allClaims.find(
+    item => String(item.id) === String(claimId)
+  );
+
+  if (!claim?.pdfPath) {
+    showToast('This claim does not have a PDF.', 'error');
+    return;
+  }
+
+  const { data, error } = await supabaseClient.storage
+    .from('claim-pdfs')
+    .createSignedUrl(claim.pdfPath, 300);
+
   if (error || !data?.signedUrl) {
-    console.error(error);
+    console.error('Unable to open PDF:', error);
     showToast('Unable to open this claim PDF.', 'error');
     return;
   }
+
   window.open(data.signedUrl, '_blank', 'noopener');
+}
+
+
+async function deleteClaim(claimId) {
+  const claim = allClaims.find(
+    item => String(item.id) === String(claimId)
+  );
+
+  if (!claim) {
+    showToast('Claim record not found.', 'error');
+    return;
+  }
+
+  if (!['DRAFT', 'READY'].includes(claim.status)) {
+    showToast(
+      'A claim already sent to the Claim Department cannot be deleted.',
+      'error'
+    );
+
+    return;
+  }
+
+  const confirmed = window.confirm(
+    `Delete claim ${claim.claimRef}?\n\n` +
+    'This action cannot be undone.'
+  );
+
+  if (!confirmed) return;
+
+  try {
+    if (claim.pdfPath) {
+      const { error: storageError } =
+        await supabaseClient.storage
+          .from('claim-pdfs')
+          .remove([claim.pdfPath]);
+
+      if (storageError) {
+        console.error(
+          'PDF deletion failed:',
+          storageError
+        );
+
+        showToast(
+          'Unable to delete the stored claim PDF.',
+          'error'
+        );
+
+        return;
+      }
+    }
+
+    const { error: deleteError } = await supabaseClient
+      .from('claim_records')
+      .delete()
+      .eq('id', claim.id)
+      .eq('adviser_id', AUTH_USER.id)
+      .in('status', ['DRAFT', 'READY']);
+
+    if (deleteError) {
+      console.error(
+        'Claim deletion failed:',
+        deleteError
+      );
+
+      showToast(
+        'Unable to delete the claim record.',
+        'error'
+      );
+
+      return;
+    }
+
+    showToast(`Claim ${claim.claimRef} deleted.`);
+
+    await loadClaims();
+  } catch (error) {
+    console.error(
+      'Unexpected deletion error:',
+      error
+    );
+
+    showToast(
+      'An unexpected error occurred while deleting the claim.',
+      'error'
+    );
+  }
 }
 
 function setPreset(name) {
