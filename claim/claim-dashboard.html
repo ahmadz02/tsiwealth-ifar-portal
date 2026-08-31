@@ -215,7 +215,8 @@ async function requireAuth() {
   }
   AUTH_USER = data.user;
   const meta = AUTH_USER.user_metadata || {};
-  document.getElementById('auth-user-name').textContent = meta.full_name || 'User';
+  document.getElementById('auth-user-name').textContent =
+    meta.full_name || meta.name || meta.display_name || String(AUTH_USER.email || 'User').split('@')[0];
   document.getElementById('auth-user-email').textContent = AUTH_USER.email || '';
   return true;
 }
@@ -302,33 +303,13 @@ function renderStats() {
 
 function statusBadge(status) {
   const s = String(status || 'SUBMITTED').toUpperCase();
-
-  if (s === 'SENT_TO_CLAIM_DEPT') {
-    return `
-      <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-        <i class="fa-solid fa-circle-check text-[10px]"></i>
-        SENT TO CLAIM DEPT
-      </span>
-    `;
-  }
-
-  if (s === 'READY') {
-    return `
-      <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-        <i class="fa-solid fa-spinner text-[10px]"></i>
-        READY
-      </span>
-    `;
-  }
-
+  if (s === 'SENT_TO_CLAIM_DEPT') return `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200"><i class="fa-solid fa-circle-check text-[10px]"></i>${escapeHtml(s)}</span>`;
+  if (s === 'READY') return `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200"><i class="fa-solid fa-spinner text-[10px]"></i>READY</span>`;
   if (s === 'DRAFT') {
-    return `
-      <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-        <i class="fa-solid fa-pen text-[10px]"></i>
-        DRAFT
-      </span>
-    `;
+    return `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200"><i class="fa-solid fa-pen text-[10px]"></i>DRAFT</span>`;
   }
+  return `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200"><i class="fa-solid fa-clock text-[10px]"></i>${escapeHtml(s)}</span>`;
+}
 
 function renderTable() {
   const tbody = document.getElementById('claims-table-body');
@@ -394,30 +375,6 @@ function renderTable() {
 }
 
 
-async function openClaimPdf(claimId) {
-  const claim = allClaims.find(
-    item => String(item.id) === String(claimId)
-  );
-
-  if (!claim?.pdfPath) {
-    showToast('This claim does not have a PDF.', 'error');
-    return;
-  }
-
-  const { data, error } = await supabaseClient.storage
-    .from('claim-pdfs')
-    .createSignedUrl(claim.pdfPath, 300);
-
-  if (error || !data?.signedUrl) {
-    console.error('Unable to open PDF:', error);
-    showToast('Unable to open this claim PDF.', 'error');
-    return;
-  }
-
-  window.open(data.signedUrl, '_blank', 'noopener');
-}
-
-
 async function deleteClaim(claimId) {
   const claim = allClaims.find(
     item => String(item.id) === String(claimId)
@@ -433,7 +390,6 @@ async function deleteClaim(claimId) {
       'A claim already sent to the Claim Department cannot be deleted.',
       'error'
     );
-
     return;
   }
 
@@ -445,6 +401,7 @@ async function deleteClaim(claimId) {
   if (!confirmed) return;
 
   try {
+    // Delete the privately stored PDF first.
     if (claim.pdfPath) {
       const { error: storageError } =
         await supabaseClient.storage
@@ -452,10 +409,7 @@ async function deleteClaim(claimId) {
           .remove([claim.pdfPath]);
 
       if (storageError) {
-        console.error(
-          'PDF deletion failed:',
-          storageError
-        );
+        console.error('PDF deletion failed:', storageError);
 
         showToast(
           'Unable to delete the stored claim PDF.',
@@ -466,6 +420,7 @@ async function deleteClaim(claimId) {
       }
     }
 
+    // Delete the database record.
     const { error: deleteError } = await supabaseClient
       .from('claim_records')
       .delete()
@@ -474,10 +429,7 @@ async function deleteClaim(claimId) {
       .in('status', ['DRAFT', 'READY']);
 
     if (deleteError) {
-      console.error(
-        'Claim deletion failed:',
-        deleteError
-      );
+      console.error('Claim deletion failed:', deleteError);
 
       showToast(
         'Unable to delete the claim record.',
@@ -491,16 +443,28 @@ async function deleteClaim(claimId) {
 
     await loadClaims();
   } catch (error) {
-    console.error(
-      'Unexpected deletion error:',
-      error
-    );
+    console.error('Unexpected deletion error:', error);
 
     showToast(
       'An unexpected error occurred while deleting the claim.',
       'error'
     );
   }
+}
+
+
+
+
+async function openClaimPdf(claimId) {
+  const claim = allClaims.find(c => String(c.id) === String(claimId));
+  if (!claim?.pdfPath) return;
+  const { data, error } = await supabaseClient.storage.from('claim-pdfs').createSignedUrl(claim.pdfPath, 300);
+  if (error || !data?.signedUrl) {
+    console.error(error);
+    showToast('Unable to open this claim PDF.', 'error');
+    return;
+  }
+  window.open(data.signedUrl, '_blank', 'noopener');
 }
 
 function setPreset(name) {
