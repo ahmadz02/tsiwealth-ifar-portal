@@ -40,7 +40,9 @@ function bytesToBase64(bytes: Uint8Array) {
       Math.min(index + chunkSize, bytes.length),
     )
 
-    chunks.push(String.fromCharCode(...chunk))
+    chunks.push(
+      String.fromCharCode(...chunk),
+    )
   }
 
   return btoa(chunks.join(''))
@@ -69,29 +71,36 @@ Deno.serve(async (req) => {
     )
 
     const publishableKey =
-      publishableKeys.default || Deno.env.get('SUPABASE_ANON_KEY')
+      publishableKeys.default ||
+      Deno.env.get('SUPABASE_ANON_KEY')
 
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+    const serviceRoleKey =
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 
     if (!publishableKey || !serviceRoleKey) {
       return json(
         {
-          error: 'Required Supabase function credentials are unavailable.',
+          error:
+            'Required Supabase function credentials are unavailable.',
         },
         500,
       )
     }
 
-    const userClient = createClient(supabaseUrl, publishableKey, {
-      global: {
-        headers: {
-          Authorization: authHeader,
+    const userClient = createClient(
+      supabaseUrl,
+      publishableKey,
+      {
+        global: {
+          headers: {
+            Authorization: authHeader,
+          },
+        },
+        auth: {
+          persistSession: false,
         },
       },
-      auth: {
-        persistSession: false,
-      },
-    })
+    )
 
     const { data: userData, error: userError } =
       await userClient.auth.getUser()
@@ -107,25 +116,38 @@ Deno.serve(async (req) => {
       return json({ error: 'claimId is required.' }, 400)
     }
 
-    const { data: claim, error: claimError } = await userClient
-      .from('claim_records')
-      .select('*')
-      .eq('id', claimId)
-      .eq('adviser_id', userData.user.id)
-      .single()
+    const { data: claim, error: claimError } =
+      await userClient
+        .from('claim_records')
+        .select('*')
+        .eq('id', claimId)
+        .eq('adviser_id', userData.user.id)
+        .single()
 
     if (claimError || !claim) {
       console.error('Claim query:', claimError)
-      return json({ error: 'Claim record not found.' }, 404)
+
+      return json(
+        { error: 'Claim record not found.' },
+        404,
+      )
     }
 
     if (!claim.pdf_path) {
-      return json({ error: 'The claim PDF is not available.' }, 409)
+      return json(
+        { error: 'The claim PDF is not available.' },
+        409,
+      )
     }
 
-    if (!['READY', 'SENT_TO_CLAIM_DEPT'].includes(claim.status)) {
+    if (
+      !['READY', 'SENT_TO_CLAIM_DEPT'].includes(claim.status)
+    ) {
       return json(
-        { error: 'This claim is not ready for submission.' },
+        {
+          error:
+            'This claim is not ready for submission.',
+        },
         409,
       )
     }
@@ -133,12 +155,13 @@ Deno.serve(async (req) => {
     const resendApiKey = Deno.env.get('RESEND_API_KEY')
     const emailFrom = Deno.env.get('EMAIL_FROM')
     const emailReplyTo = Deno.env.get('EMAIL_REPLY_TO')
-    const claimDeptEmails = (Deno.env.get('CLAIM_DEPT_EMAIL') || '')
-      .split(',')
-      .map((email) => email.trim())
-      .filter(Boolean)
+    const claimDeptEmail = Deno.env.get('CLAIM_DEPT_EMAIL')
 
-    if (!resendApiKey || !emailFrom || claimDeptEmails.length === 0) {
+    if (
+      !resendApiKey ||
+      !emailFrom ||
+      !claimDeptEmail
+    ) {
       return json(
         {
           error:
@@ -148,11 +171,15 @@ Deno.serve(async (req) => {
       )
     }
 
-    const adminClient = createClient(supabaseUrl, serviceRoleKey, {
-      auth: {
-        persistSession: false,
+    const adminClient = createClient(
+      supabaseUrl,
+      serviceRoleKey,
+      {
+        auth: {
+          persistSession: false,
+        },
       },
-    })
+    )
 
     const { data: pdfBlob, error: downloadError } =
       await adminClient.storage
@@ -161,20 +188,30 @@ Deno.serve(async (req) => {
 
     if (downloadError || !pdfBlob) {
       console.error('PDF download:', downloadError)
-      return json({ error: 'Unable to retrieve the claim PDF.' }, 500)
+
+      return json(
+        { error: 'Unable to retrieve the claim PDF.' },
+        500,
+      )
     }
 
     if (pdfBlob.size > 15_000_000) {
-      return json({ error: 'The claim PDF is too large to email.' }, 413)
+      return json(
+        { error: 'The claim PDF is too large to email.' },
+        413,
+      )
     }
 
-    const pdfBytes = new Uint8Array(await pdfBlob.arrayBuffer())
+    const pdfBytes = new Uint8Array(
+      await pdfBlob.arrayBuffer(),
+    )
+
     const pdfBase64 = bytesToBase64(pdfBytes)
     const filename = `${claim.claim_ref}.pdf`
 
     const emailBody: Record<string, unknown> = {
       from: emailFrom,
-      to: claimDeptEmails,
+      to: [claimDeptEmail],
       subject: `Claim Submission - ${claim.claim_ref}`,
       html: `
         <div style="
@@ -236,16 +273,20 @@ Deno.serve(async (req) => {
       emailBody.reply_to = emailReplyTo
     }
 
-    const emailResponse = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${resendApiKey}`,
-        'Content-Type': 'application/json',
+    const emailResponse = await fetch(
+      'https://api.resend.com/emails',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${resendApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(emailBody),
       },
-      body: JSON.stringify(emailBody),
-    })
+    )
 
-    const emailResult = await emailResponse.json().catch(() => ({}))
+    const emailResult =
+      await emailResponse.json().catch(() => ({}))
 
     if (!emailResponse.ok) {
       console.error('Resend error:', emailResult)
@@ -269,19 +310,22 @@ Deno.serve(async (req) => {
         first_sent_at: claim.first_sent_at || now,
         last_sent_at: now,
         send_count: Number(claim.send_count || 0) + 1,
-        recipient_email: claimDeptEmails.join(', '),
+        recipient_email: claimDeptEmail,
         updated_at: now,
       })
       .eq('id', claim.id)
       .eq('adviser_id', userData.user.id)
 
     if (updateError) {
-      console.error('Email sent but record update failed:', updateError)
+      console.error(
+        'Email sent but record update failed:',
+        updateError,
+      )
     }
 
     return json({
       success: true,
-      recipient: claimDeptEmails,
+      recipient: claimDeptEmail,
       messageId: emailResult?.id || null,
     })
   } catch (error) {
