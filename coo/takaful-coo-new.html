@@ -207,9 +207,9 @@
           I hereby inform the Company that with regard to the above participant's application for a new certificate, I have provided the options from the following Takaful operator for the participant's consideration. Per Bank Negara Malaysia's Prudent and Professional Conduct requirements, at least three (3) different licensed Takaful operators must be presented.
         </div>
 
-        <!-- Operator Selection: 3 dropdown rows -->
+        <!-- Operator Selection: 5 dropdown rows (3 mandatory, 2 optional) -->
         <div class="space-y-3">
-          <label class="block text-xs font-semibold text-slate-700 uppercase">Takaful Operators Presented (select 3 different operators) *</label>
+          <label class="block text-xs font-semibold text-slate-700 uppercase">Takaful Operators Presented (3 mandatory, up to 2 optional) *</label>
           <div id="operator-select-container" class="space-y-2"></div>
         </div>
 
@@ -265,14 +265,14 @@
 <script>
   // ---------- Constants ----------
   const OPERATORS = [
-    'Hong Leong MSIG Takaful',
-    'Great Eastern Takaful Berhad',
     'AIA Public Takaful Berhad',
+    'Etiqa Family Takaful Berhad',
+    'Great Eastern Takaful Berhad',
+    'Hong Leong MSIG Takaful Berhad',
     'Prudential BSN Takaful Berhad',
-    'Zurich Takaful Malaysia',
-    'Takaful Ikhlas',
-    'Etiqa Takaful',
-    'Syarikat Takaful Malaysia Keluarga Berhad'
+    'Syarikat Takaful Malaysia Keluarga Berhad',
+    'Takaful Ikhlas Family Berhad',
+    'Zurich Takaful Malaysia Berhad'
   ];
   const COMPANY_ADDRESS = 'D-20-3A, Menara SuezCap 1, No.2, Jalan Kerinchi, Gerbang Kerinchi Lestari, 59200, Kuala Lumpur';
   const COMPANY_CONTACT = 'Tel : (603) 2303 1987   |   Email: admin@tsiwealth.com   |   Website: www.tsiwealth.com.my';
@@ -471,19 +471,24 @@
     document.getElementById('modal-create').classList.add('hidden');
   }
 
+  const MANDATORY_OPERATOR_COUNT = 3;
+  const MAX_OPERATOR_COUNT = 5;
+
   function renderOperatorSelects(selected = []) {
     const container = document.getElementById('operator-select-container');
     container.innerHTML = '';
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < MAX_OPERATOR_COUNT; i++) {
+      const isMandatory = i < MANDATORY_OPERATOR_COUNT;
       const div = document.createElement('div');
       div.className = 'flex items-center space-x-2 bg-slate-50 p-2 rounded-xl border border-slate-200';
       const opts = OPERATORS.map(op => `<option value="${escapeHtml(op)}" ${selected[i] === op ? 'selected' : ''}>${escapeHtml(op)}</option>`).join('');
       div.innerHTML = `
         <span class="text-xs font-semibold text-slate-400 w-5">${i + 1}.</span>
-        <select data-idx="${i}" class="operator-select flex-1 bg-white px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-1 ring-brand">
-          <option value="">-- Select Takaful Operator --</option>
+        <select data-idx="${i}" data-mandatory="${isMandatory}" class="operator-select flex-1 bg-white px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-1 ring-brand">
+          <option value="">-- Select Takaful Operator${isMandatory ? '' : ' (Optional)'} --</option>
           ${opts}
-        </select>`;
+        </select>
+        <span class="text-[10px] font-semibold uppercase w-16 text-right ${isMandatory ? 'text-brand-navy' : 'text-slate-400'}">${isMandatory ? 'Required' : 'Optional'}</span>`;
       container.appendChild(div);
     }
   }
@@ -495,10 +500,15 @@
     const certificateNo = document.getElementById('input-certificate-no').value.trim();
     const adviserName = document.getElementById('input-adviser-name').value.trim();
     const remarks = document.getElementById('input-remarks').value.trim();
-    const operators = Array.from(document.querySelectorAll('.operator-select')).map(s => s.value).filter(Boolean);
-
-    if (operators.length !== 3) return showToast('Please select 3 Takaful operators.', 'error');
-    if (new Set(operators).size !== 3) return showToast('Please select 3 different Takaful operators.', 'error');
+    const operatorSelects = Array.from(document.querySelectorAll('.operator-select'));
+    const mandatorySelects = operatorSelects.filter(s => s.dataset.mandatory === 'true');
+    if (mandatorySelects.some(s => !s.value)) {
+      return showToast(`Please select all ${MANDATORY_OPERATOR_COUNT} mandatory Takaful operators.`, 'error');
+    }
+    const operators = operatorSelects.map(s => s.value).filter(Boolean);
+    if (new Set(operators).size !== operators.length) {
+      return showToast('Please select different Takaful operators (no duplicates).', 'error');
+    }
 
     const referenceNo = 'TSIWP-' + Date.now().toString(36).toUpperCase() + '-' + Math.floor(1000 + Math.random() * 9000);
     const auditLog = [{ action: 'Confirmation form created by adviser', timestamp: new Date().toLocaleString('en-MY') }];
