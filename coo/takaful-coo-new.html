@@ -143,10 +143,24 @@
         <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
           <h3 class="font-semibold text-slate-800">Recent Confirmation Requests</h3>
         </div>
+        <div id="bulk-send-bar" class="hidden px-6 py-3 border-b border-slate-100 bg-blue-50 flex items-center justify-between">
+          <span id="bulk-send-count" class="text-xs font-semibold text-brand-navy"></span>
+          <div class="flex items-center space-x-2">
+            <button onclick="clearBulkSelection()" class="px-3 py-1.5 text-xs font-semibold text-slate-500 hover:text-slate-700">
+              Clear
+            </button>
+            <button id="bulk-send-btn" onclick="sendBulkToAD()" class="px-3 py-1.5 bg-brand-navy hover:opacity-90 text-white rounded-lg text-xs font-semibold shadow-sm transition-all inline-flex items-center space-x-1.5">
+              <i class="fa-solid fa-paper-plane"></i><span>Send Selected to AD</span>
+            </button>
+          </div>
+        </div>
         <div class="overflow-x-auto">
           <table class="w-full text-left text-sm">
             <thead class="bg-slate-50 text-slate-500 uppercase text-xs">
               <tr>
+                <th class="px-4 py-3 font-semibold w-10">
+                  <input type="checkbox" id="select-all-checkbox" onchange="toggleSelectAll(this.checked)" class="rounded border-slate-300 text-brand-navy focus:ring-brand cursor-pointer" title="Select all closed &amp; verified certificates">
+                </th>
                 <th class="px-6 py-3 font-semibold">Ref No. &amp; Participant</th>
                 <th class="px-6 py-3 font-semibold">Certificate No.</th>
                 <th class="px-6 py-3 font-semibold">Date Created</th>
@@ -282,6 +296,7 @@
   let proposals = [];
   let activeProposalId = null;
   let currentRole = 'adviser';
+  let selectedForBulkSend = new Set();
 
   let clientSigCanvas = null, clientSigCtx = null, isDrawingClient = false;
   let adviserSigCanvas = null, adviserSigCtx = null, isDrawingAdviser = false;
@@ -379,12 +394,23 @@
     );
   }
 
+  function eligibleForBulkSend(prop) {
+    return prop.status === 'CLOSED' && !hasAdPdfBeenSent(prop);
+  }
+
   function renderAdviserTable() {
     const tbody = document.getElementById('documents-table-body');
     tbody.innerHTML = '';
 
+    // Drop selections for any proposal that's no longer eligible (e.g. already sent, deleted)
+    const eligibleIds = new Set(proposals.filter(eligibleForBulkSend).map(p => p.id));
+    Array.from(selectedForBulkSend).forEach(id => {
+      if (!eligibleIds.has(id)) selectedForBulkSend.delete(id);
+    });
+
     if (proposals.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="5" class="px-6 py-8 text-center text-slate-400">No confirmation forms created yet. Click "New Confirmation Form" to begin.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-8 text-center text-slate-400">No confirmation forms created yet. Click "New Confirmation Form" to begin.</td></tr>`;
+      updateBulkActionBar();
       return;
     }
 
@@ -402,8 +428,14 @@
       }
 
       const dateStr = new Date(prop.createdAt).toLocaleDateString('en-MY', { month: 'short', day: 'numeric', year: 'numeric' });
+      const canBulkSelect = eligibleForBulkSend(prop);
 
       tr.innerHTML = `
+        <td class="px-4 py-4">
+          ${canBulkSelect ? `
+            <input type="checkbox" class="row-select-checkbox rounded border-slate-300 text-brand-navy focus:ring-brand cursor-pointer" data-id="${prop.id}" ${selectedForBulkSend.has(prop.id) ? 'checked' : ''} onchange="toggleRowSelect('${prop.id}', this.checked)" title="Select for bulk send to AD">
+          ` : ''}
+        </td>
         <td class="px-6 py-4">
           <div class="font-bold text-slate-900">${escapeHtml(prop.participantName)}</div>
           <div class="text-xs text-slate-400">${escapeHtml(prop.participantEmail || '')}</div>
@@ -435,6 +467,11 @@
         </td>`;
       tbody.appendChild(tr);
     });
+
+
+
+    updateSelectAllCheckboxState();
+    updateBulkActionBar();
   }
 
   function updateStats() {
@@ -442,6 +479,51 @@
     document.getElementById('stat-awaiting-client').innerText = proposals.filter(p => p.status === 'AWAITING_CLIENT').length;
     document.getElementById('stat-awaiting-adviser').innerText = proposals.filter(p => p.status === 'AWAITING_ADVISER').length;
     document.getElementById('stat-completed').innerText = proposals.filter(p => p.status === 'CLOSED').length;
+  }
+
+  // ---------- Bulk Send Selection ----------
+  function toggleRowSelect(id, checked) {
+    if (checked) selectedForBulkSend.add(id);
+    else selectedForBulkSend.delete(id);
+    updateSelectAllCheckboxState();
+    updateBulkActionBar();
+  }
+
+  function toggleSelectAll(checked) {
+    const eligibleIds = proposals.filter(eligibleForBulkSend).map(p => p.id);
+    if (checked) {
+      eligibleIds.forEach(id => selectedForBulkSend.add(id));
+    } else {
+      eligibleIds.forEach(id => selectedForBulkSend.delete(id));
+    }
+    renderAdviserTable();
+  }
+
+  function clearBulkSelection() {
+    selectedForBulkSend.clear();
+    renderAdviserTable();
+  }
+
+  function updateSelectAllCheckboxState() {
+    const selectAllCb = document.getElementById('select-all-checkbox');
+    if (!selectAllCb) return;
+    const eligibleIds = proposals.filter(eligibleForBulkSend).map(p => p.id);
+    const selectedEligibleCount = eligibleIds.filter(id => selectedForBulkSend.has(id)).length;
+    selectAllCb.checked = eligibleIds.length > 0 && selectedEligibleCount === eligibleIds.length;
+    selectAllCb.indeterminate = selectedEligibleCount > 0 && selectedEligibleCount < eligibleIds.length;
+  }
+
+  function updateBulkActionBar() {
+    const bar = document.getElementById('bulk-send-bar');
+    const countEl = document.getElementById('bulk-send-count');
+    if (!bar || !countEl) return;
+    const n = selectedForBulkSend.size;
+    if (n > 0) {
+      bar.classList.remove('hidden');
+      countEl.textContent = `${n} certificate${n > 1 ? 's' : ''} selected`;
+    } else {
+      bar.classList.add('hidden');
+    }
   }
 
   async function deleteProposal(id) {
@@ -1020,6 +1102,41 @@
     built.pdf.save(built.filename);
   }
 
+  async function sendCertificateToAD(doc) {
+    const built = buildCertificatePDF(doc);
+    if (!built) return { success: false, error: 'Unable to build the certificate PDF.' };
+
+    const dataUri = built.pdf.output('datauristring');
+    const pdfBase64 = dataUri.includes(',') ? dataUri.split(',')[1] : dataUri;
+
+    const { data, error } = await supabaseClient.functions.invoke('send-confirmation-email', {
+      body: {
+        mode: 'ad_closed_pdf',
+        confirmationId: doc.dbId,
+        pdfBase64,
+        filename: built.filename
+      }
+    });
+
+    if (error) {
+      console.error(error);
+      let message = 'Unable to send the closed PDF to AD.';
+      try {
+        if (error.context && typeof error.context.json === 'function') {
+          const detail = await error.context.json();
+          if (detail?.error) message = detail.error;
+        }
+      } catch (_) {}
+      return { success: false, error: message };
+    }
+
+    if (!data?.success) {
+      return { success: false, error: data?.error || 'Unable to send the closed PDF to AD.' };
+    }
+
+    return { success: true, recipient: data.recipient };
+  }
+
   async function sendClosedPdfToAD(docId) {
     const doc = proposals.find(p => p.id === docId);
     if (!doc || doc.status !== 'CLOSED') {
@@ -1035,39 +1152,12 @@
     }
 
     try {
-      const built = buildCertificatePDF(doc);
-      if (!built) return;
-      const dataUri = built.pdf.output('datauristring');
-      const pdfBase64 = dataUri.includes(',') ? dataUri.split(',')[1] : dataUri;
-
-      const { data, error } = await supabaseClient.functions.invoke('send-confirmation-email', {
-        body: {
-          mode: 'ad_closed_pdf',
-          confirmationId: doc.dbId,
-          pdfBase64,
-          filename: built.filename
-        }
-      });
-
-      if (error) {
-        console.error(error);
-        let message = 'Unable to send the closed PDF to AD.';
-        try {
-          if (error.context && typeof error.context.json === 'function') {
-            const detail = await error.context.json();
-            if (detail?.error) message = detail.error;
-          }
-        } catch (_) {}
-        showToast(message, 'error');
+      const result = await sendCertificateToAD(doc);
+      if (!result.success) {
+        showToast(result.error, 'error');
         return;
       }
-
-      if (!data?.success) {
-        showToast(data?.error || 'Unable to send the closed PDF to AD.', 'error');
-        return;
-      }
-
-      showToast(`Closed PDF sent to AD${data.recipient ? ` (${data.recipient})` : ''}.`);
+      showToast(`Closed PDF sent to AD${result.recipient ? ` (${result.recipient})` : ''}.`);
       await loadConfirmations();
     } finally {
       if (button && document.body.contains(button)) {
@@ -1075,6 +1165,55 @@
         button.innerHTML = originalHtml;
       }
     }
+  }
+
+  async function sendBulkToAD() {
+    const ids = Array.from(selectedForBulkSend);
+    if (ids.length === 0) return;
+
+    const bulkBtn = document.getElementById('bulk-send-btn');
+    const originalHtml = bulkBtn?.innerHTML || '';
+    if (bulkBtn) bulkBtn.disabled = true;
+
+    let successCount = 0;
+    const failedCerts = [];
+
+    for (let i = 0; i < ids.length; i++) {
+      const doc = proposals.find(p => p.id === ids[i]);
+
+      if (bulkBtn) {
+        bulkBtn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i><span>Sending ${i + 1} of ${ids.length}...</span>`;
+      }
+
+      if (!doc || !eligibleForBulkSend(doc)) {
+        failedCerts.push(doc?.certificateNo || ids[i]);
+        continue;
+      }
+
+      const result = await sendCertificateToAD(doc);
+      if (result.success) {
+        successCount++;
+      } else {
+        failedCerts.push(doc.certificateNo || ids[i]);
+      }
+    }
+
+    selectedForBulkSend.clear();
+
+    if (bulkBtn) {
+      bulkBtn.disabled = false;
+      bulkBtn.innerHTML = originalHtml;
+    }
+
+    if (failedCerts.length === 0) {
+      showToast(`Sent ${successCount} closed PDF${successCount > 1 ? 's' : ''} to AD.`);
+    } else if (successCount === 0) {
+      showToast(`Failed to send ${failedCerts.length} certificate${failedCerts.length > 1 ? 's' : ''} to AD.`, 'error');
+    } else {
+      showToast(`Sent ${successCount}, failed ${failedCerts.length}: ${failedCerts.join(', ')}.`, 'error');
+    }
+
+    await loadConfirmations();
   }
 
   // ---------- Utilities ----------
