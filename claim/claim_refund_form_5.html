@@ -767,7 +767,7 @@ async function saveClaimToSupabase(blob, claimRef) {
     })
     .eq('id', CURRENT_CLAIM.id)
     .eq('adviser_id', AUTH_USER.id)
-    .eq('status', 'DRAFT')
+    .in('status', ['DRAFT', 'RETURNED'])
     .select('*')
     .single();
   if (updateError) throw updateError;
@@ -931,7 +931,7 @@ async function loadDraftRecord(id) {
     .select('*')
     .eq('id', id)
     .eq('adviser_id', AUTH_USER.id)
-    .eq('status', 'DRAFT')
+    .in('status', ['DRAFT', 'RETURNED'])
     .single();
   if (error) throw new Error('This draft could not be opened. It may have been completed, deleted, or belong to another adviser.');
   CURRENT_CLAIM = data;
@@ -951,7 +951,7 @@ async function initializeDraftRecord() {
 }
 
 async function saveDraft({ showStatus = true } = {}) {
-  if (!CURRENT_CLAIM?.id || CURRENT_CLAIM.status !== 'DRAFT') return;
+  if (!CURRENT_CLAIM?.id || !['DRAFT', 'RETURNED'].includes(CURRENT_CLAIM.status)) return;
   if (draftSaveInProgress) {
     draftSaveQueued = true;
     return;
@@ -975,7 +975,7 @@ async function saveDraft({ showStatus = true } = {}) {
       })
       .eq('id', CURRENT_CLAIM.id)
       .eq('adviser_id', AUTH_USER.id)
-      .eq('status', 'DRAFT')
+      .in('status', ['DRAFT', 'RETURNED'])
       .select('*')
       .single();
     if (error) throw error;

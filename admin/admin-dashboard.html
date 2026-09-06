@@ -1,0 +1,49 @@
+<!doctype html><html lang="en">
+    
+<head>
+    
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    
+<title>Super Admin | IFAR Portal</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../supabase-config.js"></script><script src="admin-common.js"></script>
+
+</head>
+
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+    
+<header class="bg-[#212F6E] text-white border-b-2 border-[#FFCB08]">
+    
+<div class="max-w-7xl mx-auto px-5 h-16 flex items-center justify-between"><div>
+<div class="font-bold">TSI Wealth IFAR Portal</div>
+<div class="text-xs text-amber-300">Super Admin</div>
+
+</div>
+
+<div class="flex items-center gap-3 text-xs">
+<span id="admin-email"></span>
+<a href="../index.html" class="bg-white/10 px-3 py-2 rounded-lg">Adviser Portal</a>
+<button onclick="adminLogout()" class="bg-white/10 px-3 py-2 rounded-lg">Logout</button>
+
+</div>
+
+</div>
+
+</header>
+<main class="max-w-6xl mx-auto p-6">
+
+<h1 class="text-3xl font-bold text-[#212F6E]">Administration Dashboard</h1>
+<p class="text-slate-500 mt-1">View and manage activity across all IFAR users.</p>
+<div class="grid md:grid-cols-2 gap-6 mt-8"><a href="admin-claims.html" class="bg-white border rounded-2xl p-7 shadow-sm hover:shadow-lg"><div class="text-amber-500 font-bold text-xs uppercase">Claim Module</div><div class="text-2xl font-bold mt-2">All Claim Submissions</div><p class="text-sm text-slate-500 mt-2">Search claims and record Receive or Return actions.</p><div class="mt-6 text-[#212F6E] font-semibold">Open Claims →</div></a>
+<a href="admin-confirmations.html" class="bg-white border rounded-2xl p-7 shadow-sm hover:shadow-lg">
+<div class="text-amber-500 font-bold text-xs uppercase">Option Confirmation</div>
+<div class="text-2xl font-bold mt-2">All Confirmations</div>
+<p class="text-sm text-slate-500 mt-2">View process status and send client or IFAR reminders.</p>
+<div class="mt-6 text-[#212F6E] font-semibold">Open Confirmations →</div>
+</a></div></main><div id="admin-toast" class="hidden"></div>
+
+<script>requireSuperAdmin();</script>
+
+</body></html>
+
