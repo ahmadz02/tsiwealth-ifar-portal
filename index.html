@@ -70,6 +70,7 @@
       
       <!-- Header Quick Actions & User Info -->
       <div class="flex items-center space-x-3 sm:space-x-5">
+        <a id="super-admin-link" href="admin/admin-dashboard.html" class="hidden text-xs sm:text-sm px-3 py-1.5 rounded-lg bg-[#FFCB08] text-[#212F6E] font-bold">Super Admin</a>
         <button class="text-xs sm:text-sm px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition flex items-center space-x-1.5 border border-white/10">
           <i data-lucide="layout-dashboard" class="w-4 h-4 text-[#FFCB08]"></i>
           <span class="hidden sm:inline font-medium">Portal Home</span>
@@ -266,6 +267,11 @@
     const user = await requireAuth();
 
     if (!user) return;
+
+    const adminCheck = await supabaseClient.rpc('is_super_admin');
+    if (!adminCheck.error && adminCheck.data === true) {
+      document.getElementById('super-admin-link')?.classList.remove('hidden');
+    }
 
     const nameElement = document.getElementById('auth-user-name');
     const emailElement = document.getElementById('auth-user-email');
