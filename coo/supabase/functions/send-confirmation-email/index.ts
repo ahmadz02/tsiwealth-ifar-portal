@@ -57,6 +57,7 @@ Deno.serve(async (req) => {
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 
     const publishableKeys = JSON.parse(
       Deno.env.get('SUPABASE_PUBLISHABLE_KEYS') || '{}',
@@ -307,6 +308,54 @@ Deno.serve(async (req) => {
       }
 
       recipient = adEmail
+
+      // Persist the final closed PDF to Storage so Super Admin can
+      // retrieve it later. Best-effort: a storage failure here must
+      // not block the AD notification email itself.
+      if (serviceRoleKey) {
+        try {
+          const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+            auth: { persistSession: false },
+          })
+          const pdfBytes = Uint8Array.from(
+            atob(pdfBase64.replace(/\s/g, '')),
+            (c) => c.charCodeAt(0),
+          )
+          const pdfPath = `${confirmation.id}/${filename}`
+
+          const { error: uploadError } = await adminClient.storage
+            .from('confirmation-pdfs')
+            .upload(pdfPath, pdfBytes, {
+              contentType: 'application/pdf',
+              upsert: true,
+            })
+
+          if (uploadError) {
+            console.error('Confirmation PDF upload failed:', uploadError)
+          } else {
+            const { error: pathUpdateError } = await adminClient
+              .from('confirmation_requests')
+              .update({ pdf_path: pdfPath })
+              .eq('id', confirmation.id)
+
+            if (pathUpdateError) {
+              console.error(
+                'Confirmation pdf_path update failed:',
+                pathUpdateError,
+              )
+            }
+          }
+        } catch (storageException) {
+          console.error(
+            'Confirmation PDF storage step failed:',
+            storageException,
+          )
+        }
+      } else {
+        console.error(
+          'SUPABASE_SERVICE_ROLE_KEY is not configured; confirmation PDF was not persisted.',
+        )
+      }
 
       subject =
         `Closed Takaful Confirmation - ` +
