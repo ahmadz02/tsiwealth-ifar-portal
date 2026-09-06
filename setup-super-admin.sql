@@ -11,8 +11,7 @@ as $$
   select lower(coalesce(auth.jwt() ->> 'email', '')) = any (
     array[
       'admin@tsiwealth.com'
-      -- Add more emails here, for example:
-      -- ,'second-admin@example.com'
+      
     ]::text[]
   );
 $$;
