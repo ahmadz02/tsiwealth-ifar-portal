@@ -1,12 +1,14 @@
-import { createClient } from 'npm:@supabase/supabase-js@2'
 
+Index · TS
+import { createClient } from 'npm:@supabase/supabase-js@2'
+ 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 const reply = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type':'application/json' } })
 const safe = (v: unknown) => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c] || c))
-
+ 
 Deno.serve(async req => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (req.method !== 'POST') return reply({ error:'Method not allowed.' }, 405)
@@ -27,7 +29,7 @@ Deno.serve(async req => {
     const db = createClient(url, service, { auth:{ persistSession:false } })
     const body = await req.json().catch(() => ({})), mode = String(body.mode || '')
     let recipient='', subject='', html='', event:Record<string,unknown>|null=null
-
+ 
     if (mode === 'claim_receive' || mode === 'claim_return') {
       const claimId = String(body.claimId || ''), reason = String(body.reason || '').trim()
       if (!claimId) return reply({ error:'claimId is required.' }, 400)
@@ -55,8 +57,9 @@ Deno.serve(async req => {
       if (q.error || !q.data) return reply({ error:'Confirmation not found.' }, 404)
       const c = q.data, app = (Deno.env.get('APP_BASE_URL') || '').replace(/\/$/, '')
       if (c.status === 'AWAITING_CLIENT') {
-        recipient=c.participant_email; subject=`Reminder: Takaful Confirmation Required - ${c.reference_no}`
-        html=`<div style="font-family:Arial,sans-serif;line-height:1.6;color:#1f2937"><h2 style="color:#212F6E">Takaful Confirmation Reminder</h2><p>Dear ${safe(c.participant_name)},</p><p>This is a reminder to review and sign your Takaful option confirmation.</p><p><a href="${app}/coo/confirmation.html?token=${c.public_token}" style="background:#212F6E;color:white;padding:12px 18px;border-radius:8px;text-decoration:none">Review and Sign Confirmation</a></p><p>Reference: ${safe(c.reference_no)}</p></div>`
+        const adviserResult=await db.auth.admin.getUserById(c.adviser_id);recipient=adviserResult.data.user?.email||''
+        subject=`Reminder: Client Signature Pending - ${c.reference_no}`
+        html=`<div style="font-family:Arial,sans-serif;line-height:1.6;color:#1f2937"><h2 style="color:#212F6E">Client Signature Reminder</h2><p>Dear ${safe(c.adviser_name)},</p><p>Your client <strong>${safe(c.participant_name)}</strong> has not yet reviewed and signed the Takaful option confirmation <strong>${safe(c.reference_no)}</strong>.</p><p>Please follow up with your client to complete the confirmation.</p><p><a href="${app}/coo/confirmation.html?token=${c.public_token}" style="background:#212F6E;color:white;padding:12px 18px;border-radius:8px;text-decoration:none">Client Confirmation Link</a></p></div>`
         event={ type:'reminder', confirmation:c, recipientType:'CLIENT' }
       } else if (c.status === 'AWAITING_ADVISER') {
         const adviserResult=await db.auth.admin.getUserById(c.adviser_id);recipient=adviserResult.data.user?.email||'';subject=`Reminder: IFAR Signature Required - ${c.reference_no}`
@@ -65,7 +68,7 @@ Deno.serve(async req => {
       } else return reply({ error:'Completed confirmations do not require a reminder.' }, 409)
       if (!recipient) return reply({ error:'Reminder recipient email is unavailable.' }, 409)
     } else return reply({ error:'Unsupported action.' }, 400)
-
+ 
     const emailPayload:Record<string,unknown>={from:emailFrom,to:[recipient],subject,html};if(replyTo)emailPayload.reply_to=replyTo
     const sent=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${resendKey}`,'Content-Type':'application/json'},body:JSON.stringify(emailPayload)})
     const sentData=await sent.json().catch(()=>({}))
@@ -82,3 +85,5 @@ Deno.serve(async req => {
     return reply({success:true,recipient,messageId:sentData?.id||null})
   } catch (e) { console.error(e); return reply({ error:e instanceof Error?e.message:'Unexpected server error.' },500) }
 })
+ 
+
