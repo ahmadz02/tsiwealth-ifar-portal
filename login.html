@@ -149,14 +149,7 @@
 
     async function checkExistingSession() {
       const { data } = await supabaseClient.auth.getSession();
-      if (data.session) {
-        const adminCheck = await supabaseClient.rpc('is_super_admin');
-        window.location.replace(
-          !adminCheck.error && adminCheck.data === true
-            ? 'admin/admin-dashboard.html'
-            : 'index.html'
-        );
-      }
+      if (data.session) window.location.replace('index.html');
     }
 
     document.getElementById('login-form').addEventListener('submit', async (event) => {
@@ -180,10 +173,7 @@
         return;
       }
 
-      const adminCheck = await supabaseClient.rpc('is_super_admin');
-      window.location.href = (!adminCheck.error && adminCheck.data === true)
-        ? 'admin/admin-dashboard.html'
-        : 'index.html';
+      window.location.href = 'index.html';
     });
 
     document.getElementById('register-form').addEventListener('submit', async (event) => {
