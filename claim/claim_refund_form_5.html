@@ -716,20 +716,9 @@ async function requireAuth() {
 
 async function generateClaimRef() {
   const year = (state.declarationDate || new Date().toISOString().slice(0, 10)).slice(0, 4);
-  const prefix = `CLM-${year}-`;
-  const { data, error } = await supabaseClient
-    .from('claim_records')
-    .select('claim_ref')
-    .like('claim_ref', `${prefix}%`)
-    .order('created_at', { ascending: false })
-    .limit(100);
+  const { data, error } = await supabaseClient.rpc('next_claim_ref', { p_year: year });
   if (error) throw error;
-  let maxNo = 0;
-  (data || []).forEach(row => {
-    const m = String(row.claim_ref || '').match(/(\d{6})$/);
-    if (m) maxNo = Math.max(maxNo, Number(m[1]));
-  });
-  return `${prefix}${String(maxNo + 1).padStart(6, '0')}`;
+  return data;
 }
 
 function claimTotalAmount() {
