@@ -1,70 +1,9 @@
-<!doctype html>
-<html lang="en">
-    
-<head>
-    
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    
-    <title>Admin Confirmations | IFAR Portal</title>
-    
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="../supabase-config.js"></script>
-    <script src="admin-common.js"></script>
-
-</head>
-<body class="bg-slate-50 text-slate-800">
-    
-    <header class="bg-[#212F6E] text-white">
-        
-        <div class="max-w-7xl mx-auto px-5 h-16 flex justify-between items-center"><a href="admin-dashboard.html" class="font-bold">← Super Admin</a>
-            <div class="flex gap-3 text-xs">
-                <span id="admin-email">
-
-                </span><button onclick="adminLogout()">Logout</button>
-            </div>
-        </div>
-    </header>
-
-<main class="max-w-7xl mx-auto p-5">
-    <h1 class="text-2xl font-bold">Option Confirmation Administration</h1>
-    <p class="text-sm text-slate-500">Read-only process monitoring with reminder actions.</p>
-    <section class="bg-white border rounded-2xl p-4 mt-5 grid md:grid-cols-3 gap-3">
-        <input id="search" class="border rounded-xl px-3 py-2" placeholder="Search reference, participant or IFAR">
-        <select id="status" class="border rounded-xl px-3 py-2">
-            <option value="">All statuses</option>
-            <option>AWAITING_CLIENT</option>
-            <option>AWAITING_ADVISER</option>
-            <option>CLOSED</option>
-        </select>
-    </section>
-    <section class="bg-white border rounded-2xl mt-5 overflow-x-auto">
-        <table class="w-full text-sm min-w-[1050px]">
-            <thead class="bg-slate-100 text-left">
-                <tr>
-                    <th class="p-3">Reference / Participant</th>
-                    <th class="p-3">IFAR</th>
-                    <th class="p-3">Certificate</th>
-                    <th class="p-3">Status</th>
-                    <th class="p-3">Last Reminder</th>
-                    <th class="p-3">Action</th>
-                </tr>
-            </thead>
-            <tbody id="rows"></tbody>
-        </table>
-    </section>
-</main>
-<div id="admin-toast" class="hidden"></div>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Admin Confirmations | IFAR Portal</title><script src="https://cdn.tailwindcss.com"></script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="../supabase-config.js"></script><script src="admin-common.js"></script></head>
+<body class="bg-slate-50 text-slate-800"><header class="bg-[#212F6E] text-white"><div class="max-w-7xl mx-auto px-5 h-16 flex justify-between items-center"><a href="admin-dashboard.html" class="font-bold">← Super Admin</a><div class="flex gap-3 text-xs"><span id="admin-email"></span><button onclick="adminLogout()">Logout</button></div></div></header>
+<main class="max-w-7xl mx-auto p-5"><h1 class="text-2xl font-bold">Option Confirmation Administration</h1><p class="text-sm text-slate-500">Read-only process monitoring with reminder actions.</p><section class="bg-white border rounded-2xl p-4 mt-5 grid md:grid-cols-3 gap-3"><input id="search" class="border rounded-xl px-3 py-2" placeholder="Search reference, participant or IFAR"><select id="status" class="border rounded-xl px-3 py-2"><option value="">All statuses</option><option>AWAITING_CLIENT</option><option>AWAITING_ADVISER</option><option>CLOSED</option></select></section>
+<section class="bg-white border rounded-2xl mt-5 overflow-x-auto"><table class="w-full text-sm min-w-[1050px]"><thead class="bg-slate-100 text-left"><tr><th class="p-3">Reference / Participant</th><th class="p-3">IFAR</th><th class="p-3">Certificate</th><th class="p-3">Status</th><th class="p-3">Last Reminder</th><th class="p-3">Action</th></tr></thead><tbody id="rows"></tbody></table></section></main><div id="admin-toast" class="hidden"></div>
 <script>
-let records=[];
-function render(){
-    const t=document.getElementById('search').value.toLowerCase(),s=document.getElementById('status').value;
-    const a=records.filter(x=>(!t||`${x.reference_no} ${x.participant_name} ${x.adviser_name} ${x.adviser_email}`.toLowerCase().includes(t))&&(!s||x.status===s));document.getElementById('rows').innerHTML=a.length?a.map(x=>`<tr class="border-t"><td class="p-3"><b>${esc(x.participant_name)}</b>
-        <div class="font-mono text-xs">${esc(x.reference_no)}</div>
-        <div class="text-xs text-slate-500">${esc(x.participant_email)}</div>
-        </td><td class="p-3">${esc(x.adviser_name)}<div class="text-xs text-slate-500">${esc(x.adviser_email)}</div>
-            </td><td class="p-3">${esc(x.certificate_no)}</td><td class="p-3 font-semibold">${esc(x.status)}</td><td class="p-3">${adminDate(x.last_reminded_at)}<div class="text-xs">${x.reminder_count||0} sent</div></td><td class="p-3">${x.status==='AWAITING_CLIENT'?`<button onclick="remind('${x.id}')" class="bg-[#212F6E] text-white px-3 py-2 rounded-lg">Remind IFAR</button>`:x.status==='AWAITING_ADVISER'?`<button onclick="remind('${x.id}')" class="bg-amber-400 text-[#212F6E] px-3 py-2 rounded-lg font-bold">Remind IFAR</button>`:'<span class="text-emerald-600 font-semibold">Completed</span>'}</td></tr>`).join(''):`<tr><td colspan="6" class="p-10 text-center text-slate-400">No confirmations found</td></tr>`}
-async function load(){const q=await supabaseClient.rpc('admin_confirmation_records');if(q.error)return showAdminToast(q.error.message,true);records=q.data||[];render()}async function remind(id){const x=records.find(v=>v.id===id),who=x.status==='AWAITING_CLIENT'?'client':'IFAR';if(!confirm(`Send a reminder to the IFAR?`))return;const q=await supabaseClient.functions.invoke('admin-portal-action',{body:{mode:'confirmation_reminder',confirmationId:id}});if(q.error||!q.data?.success)return showAdminToast(q.data?.error||q.error?.message||'Reminder failed.',true);showAdminToast(`Reminder sent to ${q.data.recipient}.`);await load()}
+let records=[];function render(){const t=document.getElementById('search').value.toLowerCase(),s=document.getElementById('status').value;const a=records.filter(x=>(!t||`${x.reference_no} ${x.participant_name} ${x.adviser_name} ${x.adviser_email}`.toLowerCase().includes(t))&&(!s||x.status===s));document.getElementById('rows').innerHTML=a.length?a.map(x=>`<tr class="border-t"><td class="p-3"><b>${esc(x.participant_name)}</b><div class="font-mono text-xs">${esc(x.reference_no)}</div><div class="text-xs text-slate-500">${esc(x.participant_email)}</div></td><td class="p-3">${esc(x.adviser_name)}<div class="text-xs text-slate-500">${esc(x.adviser_email)}</div></td><td class="p-3">${esc(x.certificate_no)}</td><td class="p-3 font-semibold">${esc(x.status)}</td><td class="p-3">${adminDate(x.last_reminded_at)}<div class="text-xs">${x.reminder_count||0} sent</div></td><td class="p-3">${x.status==='AWAITING_CLIENT'?`<button onclick="remind('${x.id}')" class="bg-[#212F6E] text-white px-3 py-2 rounded-lg">Remind Client</button>`:x.status==='AWAITING_ADVISER'?`<button onclick="remind('${x.id}')" class="bg-amber-400 text-[#212F6E] px-3 py-2 rounded-lg font-bold">Remind IFAR</button>`:'<span class="text-emerald-600 font-semibold">Completed</span>'}</td></tr>`).join(''):`<tr><td colspan="6" class="p-10 text-center text-slate-400">No confirmations found</td></tr>`}
+async function load(){const q=await supabaseClient.rpc('admin_confirmation_records');if(q.error)return showAdminToast(q.error.message,true);records=q.data||[];render()}async function remind(id){const x=records.find(v=>v.id===id),who=x.status==='AWAITING_CLIENT'?'client':'IFAR';if(!confirm(`Send a reminder to the ${who}?`))return;const q=await supabaseClient.functions.invoke('admin-portal-action',{body:{mode:'confirmation_reminder',confirmationId:id}});if(q.error||!q.data?.success)return showAdminToast(q.data?.error||q.error?.message||'Reminder failed.',true);showAdminToast(`Reminder sent to ${q.data.recipient}.`);await load()}
 document.getElementById('search').addEventListener('input',render);document.getElementById('status').addEventListener('input',render);(async()=>{if(await requireSuperAdmin())await load()})();
 </script></body></html>
