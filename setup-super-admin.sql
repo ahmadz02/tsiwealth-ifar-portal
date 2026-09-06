@@ -10,7 +10,7 @@ set search_path = public
 as $$
   select lower(coalesce(auth.jwt() ->> 'email', '')) = any (
     array[
-      'replace-with-admin-email@example.com'
+      'admin@tsiwealth.com'
       -- Add more emails here, for example:
       -- ,'second-admin@example.com'
     ]::text[]
