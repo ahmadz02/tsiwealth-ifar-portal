@@ -171,6 +171,23 @@
             <tbody id="documents-table-body" class="divide-y divide-slate-100"></tbody>
           </table>
         </div>
+        <div class="px-6 py-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50 text-sm">
+          <div class="flex items-center gap-2">
+            <span class="text-slate-500">Rows per page</span>
+            <select id="doc-page-size" class="border border-slate-300 rounded-lg px-2 py-1 text-sm bg-white">
+              <option value="10">10</option>
+              <option value="20" selected>20</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+            <span id="doc-range-info" class="text-slate-500"></span>
+          </div>
+          <div class="flex items-center gap-2">
+            <button id="doc-prev-page" class="border border-slate-300 px-3 py-1.5 rounded-lg disabled:opacity-40">Prev</button>
+            <span id="doc-page-info" class="text-slate-600"></span>
+            <button id="doc-next-page" class="border border-slate-300 px-3 py-1.5 rounded-lg disabled:opacity-40">Next</button>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -297,6 +314,7 @@
   let activeProposalId = null;
   let currentRole = 'adviser';
   let selectedForBulkSend = new Set();
+  let docCurrentPage = 1;
 
   let clientSigCanvas = null, clientSigCtx = null, isDrawingClient = false;
   let adviserSigCanvas = null, adviserSigCtx = null, isDrawingAdviser = false;
@@ -312,6 +330,10 @@
     if (emailEl) emailEl.textContent = AUTH_USER.email || '';
     const adviserInput = document.getElementById('input-adviser-name');
     if (adviserInput) adviserInput.value = meta.full_name || '';
+
+    document.getElementById('doc-page-size').addEventListener('input', () => { docCurrentPage = 1; renderAdviserTable(); });
+    document.getElementById('doc-prev-page').addEventListener('click', () => { docCurrentPage -= 1; renderAdviserTable(); });
+    document.getElementById('doc-next-page').addEventListener('click', () => { docCurrentPage += 1; renderAdviserTable(); });
 
     await loadConfirmations();
   });
@@ -367,6 +389,7 @@
         proposals.forEach(p => { p.auditEvents = grouped[p.dbId] || []; });
       }
     }
+    docCurrentPage = 1;
     renderAdviserTable();
     updateStats();
   }
@@ -408,13 +431,27 @@
       if (!eligibleIds.has(id)) selectedForBulkSend.delete(id);
     });
 
+    const pageSize = parseInt(document.getElementById('doc-page-size').value, 10) || 20;
+    const totalPages = Math.max(1, Math.ceil(proposals.length / pageSize));
+    if (docCurrentPage > totalPages) docCurrentPage = totalPages;
+    if (docCurrentPage < 1) docCurrentPage = 1;
+    const start = (docCurrentPage - 1) * pageSize;
+    const pageProposals = proposals.slice(start, start + pageSize);
+
+    document.getElementById('doc-range-info').textContent = proposals.length
+      ? `Showing ${start + 1}-${Math.min(start + pageSize, proposals.length)} of ${proposals.length}`
+      : 'Showing 0 of 0';
+    document.getElementById('doc-page-info').textContent = `Page ${docCurrentPage} of ${totalPages}`;
+    document.getElementById('doc-prev-page').disabled = docCurrentPage <= 1;
+    document.getElementById('doc-next-page').disabled = docCurrentPage >= totalPages;
+
     if (proposals.length === 0) {
       tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-8 text-center text-slate-400">No confirmation forms created yet. Click "New Confirmation Form" to begin.</td></tr>`;
       updateBulkActionBar();
       return;
     }
 
-    proposals.forEach(prop => {
+    pageProposals.forEach(prop => {
       const tr = document.createElement('tr');
       tr.className = 'hover:bg-slate-50/80 transition-colors';
 

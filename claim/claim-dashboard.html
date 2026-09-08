@@ -150,6 +150,23 @@
         <tbody id="claims-table-body" class="divide-y divide-slate-100"></tbody>
       </table>
     </div>
+    <div class="px-6 py-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50 text-sm">
+      <div class="flex items-center gap-2">
+        <span class="text-slate-500">Rows per page</span>
+        <select id="page-size" class="border border-slate-300 rounded-lg px-2 py-1 text-sm bg-white">
+          <option value="10">10</option>
+          <option value="20" selected>20</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
+        <span id="range-info" class="text-slate-500"></span>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="prev-page" class="border border-slate-300 px-3 py-1.5 rounded-lg disabled:opacity-40">Prev</button>
+        <span id="page-info" class="text-slate-600"></span>
+        <button id="next-page" class="border border-slate-300 px-3 py-1.5 rounded-lg disabled:opacity-40">Next</button>
+      </div>
+    </div>
   </section>
 </main>
 
@@ -157,6 +174,7 @@
 let AUTH_USER = null;
 let allClaims = [];
 let filteredClaims = [];
+let currentPage = 1;
 
 function showToast(message, type = 'success') {
   const container = document.getElementById('toast-container');
@@ -287,6 +305,7 @@ function applyFilters() {
     return true;
   });
   document.getElementById('filter-caption').textContent = range.label === 'All time' ? 'Showing all claim records.' : `Showing claims for ${range.label}.`;
+  currentPage = 1;
   renderStats();
   renderTable();
 }
@@ -313,11 +332,25 @@ function statusBadge(status) {
 
 function renderTable() {
   const tbody = document.getElementById('claims-table-body');
-  if (!filteredClaims.length) {
+  const pageSize = parseInt(document.getElementById('page-size').value, 10) || 20;
+  const totalPages = Math.max(1, Math.ceil(filteredClaims.length / pageSize));
+  if (currentPage > totalPages) currentPage = totalPages;
+  if (currentPage < 1) currentPage = 1;
+  const start = (currentPage - 1) * pageSize;
+  const pageClaims = filteredClaims.slice(start, start + pageSize);
+
+  document.getElementById('range-info').textContent = filteredClaims.length
+    ? `Showing ${start + 1}-${Math.min(start + pageSize, filteredClaims.length)} of ${filteredClaims.length}`
+    : 'Showing 0 of 0';
+  document.getElementById('page-info').textContent = `Page ${currentPage} of ${totalPages}`;
+  document.getElementById('prev-page').disabled = currentPage <= 1;
+  document.getElementById('next-page').disabled = currentPage >= totalPages;
+
+  if (!pageClaims.length) {
     tbody.innerHTML = `<tr><td colspan="7" class="px-6 py-12 text-center"><div class="text-slate-300 text-3xl mb-3"><i class="fa-regular fa-folder-open"></i></div><div class="text-slate-500 font-medium">No claims found</div><div class="text-xs text-slate-400 mt-1">Create a new claim or adjust the selected date range.</div></td></tr>`;
     return;
   }
-  tbody.innerHTML = filteredClaims.map(c => `
+  tbody.innerHTML = pageClaims.map(c => `
     <tr class="hover:bg-slate-50/80 transition-colors">
       <td class="px-6 py-4">
         <div class="font-bold text-slate-900">${escapeHtml(c.applicantName || 'Unnamed applicant')}</div>
@@ -486,6 +519,9 @@ document.getElementById('reset-filter').addEventListener('click', () => setPrese
 document.getElementById('search-input').addEventListener('input', applyFilters);
 document.getElementById('filter-year').addEventListener('change', () => { if (!document.getElementById('filter-year').value) document.getElementById('filter-month').value=''; });
 document.getElementById('logoutBtn').addEventListener('click', async () => { if (typeof supabaseClient !== 'undefined') await supabaseClient.auth.signOut(); window.location.replace('../login.html'); });
+document.getElementById('page-size').addEventListener('input', () => { currentPage = 1; renderTable(); });
+document.getElementById('prev-page').addEventListener('click', () => { currentPage -= 1; renderTable(); });
+document.getElementById('next-page').addEventListener('click', () => { currentPage += 1; renderTable(); });
 
 (async () => {
   const ok = await requireAuth();
