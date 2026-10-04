@@ -11,6 +11,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="../supabase-config.js"></script>
+<script src="motor-api.js"></script>
 <script src="motor-assets.js"></script>
 <style>
   body { font-family: 'Inter', sans-serif; }
@@ -65,7 +66,6 @@
 // ?ws=admin → opened from the Super Admin page (admin/admin-motor.html)
 const params = new URLSearchParams(window.location.search);
 const WORKSPACE = params.get('ws') === 'admin' ? 'ADMIN' : 'IFAR';
-const TABLE = 'motor_quotations';
 const DASHBOARD_PAGE = WORKSPACE === 'ADMIN' ? '../admin/admin-motor.html' : 'index.html';
 const DRAFT_KEY = `mtq-draft-${WORKSPACE.toLowerCase()}`;
 let AUTH_USER = null;
@@ -117,15 +117,11 @@ async function requireMotorUser() {
   return true;
 }
 
-function auditEntry(action) {
-  return { action, timestamp: new Date().toISOString(), by: AUTH_USER?.email || '' };
-}
-
 async function init() {
   if (!(await requireMotorUser())) return;
   if (params.get('id')) {
-    // RLS returns only rows this user may see (own quotations, or everything for Super Admin)
-    const { data, error } = await supabaseClient.from(TABLE).select('*').eq('id', params.get('id')).maybeSingle();
+    // The gatekeeper returns only quotations this user may see (own, or everything for Super Admin)
+    const { data, error } = await motorApi('get', { scope: WORKSPACE, id: params.get('id') });
     if (error) { console.error(error); return showFatal('Unable to open quotation', error.message || 'The database is unavailable.'); }
     if (!data) return showFatal('Quotation not found', 'It may have been deleted, or it belongs to another account.');
     record = data; savedId = data.id; dirty = false;
@@ -377,31 +373,15 @@ async function saveQuotation() {
   btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i><span>Saving...</span>';
   renderActionState();
 
-  const now = new Date().toISOString();
   const payload = {};
   SAVE_FIELDS.forEach(k => { payload[k] = record[k] ?? null; });
   payload.quotes = record.quotes;
   payload.selected_quote = currentSelectionDetail();
-  payload.quotation_date = now;     // latest saved quotation
-  payload.updated_at = now;
 
-  let result;
-  if (savedId) {
-    payload.audit_log = [...(record.audit_log || []), auditEntry('Quotation saved')];
-    result = await supabaseClient.from(TABLE).update(payload).eq('id', savedId).eq('status', 'QUOTED').select('*');
-    if (!result.error) {
-      if (!result.data || !result.data.length) result.error = { message: 'This quotation was accepted, declined or deleted in the meantime, so it was not changed.' };
-      else result.data = result.data[0];
-    }
-  } else {
-    // reference number, owner and timestamps are set by the database
-    payload.status = 'QUOTED';
-    payload.workspace = WORKSPACE;
-    payload.renewed_from = (draft && draft.renewed_from) || null;
-    payload.audit_log = [auditEntry(payload.renewed_from ? 'Renewal quotation created' : 'Quotation created')];
-    delete payload.updated_at;
-    result = await supabaseClient.from(TABLE).insert(payload).select('*').single();
-  }
+  // Reference number, owner, quotation date, status and audit log are set by the gatekeeper
+  const result = savedId
+    ? await motorApi('update', { scope: WORKSPACE, id: savedId, record: payload })
+    : await motorApi('create', { scope: WORKSPACE, record: payload, renewed_from: (draft && draft.renewed_from) || null });
 
   saving = false;
   btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i><span>Save</span>';
@@ -417,7 +397,7 @@ async function saveQuotation() {
   dirty = false;
   draft = null;
   try { sessionStorage.removeItem(DRAFT_KEY); } catch (_) {}
-  history.replaceState(null, '', `${location.pathname}?id=${encodeURIComponent(savedId)}`);
+  history.replaceState(null, '', `${location.pathname}?${WORKSPACE === 'ADMIN' ? 'ws=admin&' : ''}id=${encodeURIComponent(savedId)}`);
   renderActionState();
   showToast(`Saved as ${record.reference_no}. You can now download the PDF.`);
 }

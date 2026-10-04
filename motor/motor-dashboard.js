@@ -207,7 +207,6 @@ const MOTOR_SHELL_HTML = `
     homePage: '../index.html'               // where a non-admin is sent from the admin page
   }, window.MOTOR_CONFIG || {});
   const IS_ADMIN_VIEW = MOTOR.workspace === 'ADMIN';
-  const TABLE = 'motor_quotations';
   let AUTH_USER = null;
 
   // ---------- Constants ----------
@@ -272,10 +271,6 @@ const MOTOR_SHELL_HTML = `
       ifar_name: meta.full_name || meta.name || meta.display_name || '',
       ifar_phone: meta.phone || meta.phone_number || meta.mobile || AUTH_USER?.phone || ''
     };
-  }
-
-  function auditEntry(action) {
-    return { action, timestamp: new Date().toISOString(), by: AUTH_USER?.email || '' };
   }
 
   // Admin view: who the quotation belongs to
@@ -345,10 +340,8 @@ const MOTOR_SHELL_HTML = `
 
   // ---------- Data ----------
   async function loadProposals() {
-    let query = supabaseClient.from(TABLE).select('*').order('created_at', { ascending: false });
-    // IFAR page: own quotations only (an admin opening the IFAR page also sees only their own)
-    if (!IS_ADMIN_VIEW) query = query.eq('workspace', 'IFAR').eq('created_by', AUTH_USER.id);
-    const { data, error } = await query;
+    // IFAR page: own quotations only (also when an admin opens it); admin page: everything
+    const { data, error } = await motorApi('list', { scope: MOTOR.workspace });
     if (error) {
       console.error(error);
       showToast(`Unable to load quotations: ${supabaseErrorText(error)}`, 'error');
@@ -508,13 +501,9 @@ const MOTOR_SHELL_HTML = `
     if (!p || effectiveStatus(p) !== 'PENDING') return;
     const label = status === 'ACCEPTED' ? 'Accepted' : 'Declined';
     if (!confirm(`Mark the quotation for ${p.owner_name} (${p.vehicle_reg_no}) as ${label}?`)) return;
-    const now = new Date().toISOString();
-    const { data, error } = await supabaseClient.from(TABLE)
-      .update({ status, responded_at: now, updated_at: now, audit_log: [...(p.audit_log || []), auditEntry(`Marked as ${label}`)] })
-      .eq('id', id).eq('status', 'QUOTED').select('id');
-    if (error) { console.error(error); return showToast(`Unable to update: ${supabaseErrorText(error)}`, 'error'); }
-    if (!data || !data.length) showToast('This quotation was already updated. The list has been refreshed.', 'error');
-    else showToast(`${label} on ${fmtDMY(now)}.`);
+    const { data, error } = await motorApi('respond', { scope: MOTOR.workspace, id, status });
+    if (error) showToast(`Unable to update: ${supabaseErrorText(error)}`, 'error');
+    else showToast(`${label} on ${fmtDMY(data.responded_at)}.`);
     await loadProposals();
   }
 
@@ -522,12 +511,9 @@ const MOTOR_SHELL_HTML = `
     const p = proposals.find(x => x.id === id);
     if (!p) return;
     if (!confirm(`Undo "${p.status === 'ACCEPTED' ? 'Accepted' : 'Declined'}" for ${p.owner_name} and set it back to awaiting response?`)) return;
-    const now = new Date().toISOString();
-    const { error } = await supabaseClient.from(TABLE)
-      .update({ status: 'QUOTED', responded_at: null, updated_at: now, audit_log: [...(p.audit_log || []), auditEntry('Response undone')] })
-      .eq('id', id);
-    if (error) { console.error(error); return showToast(`Unable to update: ${supabaseErrorText(error)}`, 'error'); }
-    showToast('Response undone.');
+    const { error } = await motorApi('undo', { scope: MOTOR.workspace, id });
+    if (error) showToast(`Unable to update: ${supabaseErrorText(error)}`, 'error');
+    else showToast('Response undone.');
     await loadProposals();
   }
 
@@ -535,10 +521,9 @@ const MOTOR_SHELL_HTML = `
     const p = proposals.find(x => x.id === id);
     if (!p || p.status !== 'QUOTED') return showToast('Accepted or declined quotations cannot be deleted.', 'error');
     if (!confirm(`Delete the quotation for ${p.owner_name} (${p.vehicle_reg_no})? This cannot be undone.`)) return;
-    const { data, error } = await supabaseClient.from(TABLE).delete().eq('id', id).eq('status', 'QUOTED').select('id');
-    if (error || !data?.length) {
-      console.error(error);
-      showToast(error ? `Unable to delete: ${supabaseErrorText(error)}` : 'Unable to delete. The quotation may have been accepted or declined.', 'error');
+    const { error } = await motorApi('delete', { scope: MOTOR.workspace, id });
+    if (error) {
+      showToast(`Unable to delete: ${supabaseErrorText(error)}`, 'error');
     } else {
       showToast('Quotation deleted.');
     }
@@ -935,14 +920,12 @@ const MOTOR_SHELL_HTML = `
     if (!document.getElementById('in-coverage-term').value) document.getElementById('in-coverage-term').value = text || '';
   }
 
-  // Turn a Supabase/PostgREST error into something readable (and keep the technical part for support)
+  // Turn a gatekeeper error into something readable
   function supabaseErrorText(err) {
     if (!err) return 'Unknown error.';
     const msg = err.message || String(err);
-    if (err.code === '23514' || /check constraint/i.test(msg)) return `a value was rejected by the database (${msg}). Run motor/sql/motor-setup.sql in Supabase.`;
-    if (err.code === '42501' || /row-level security|permission denied/i.test(msg)) return `permission denied by the database (${msg}). Run motor/sql/motor-setup.sql in Supabase.`;
-    if (err.code === 'PGRST204' || /schema cache|column/i.test(msg)) return `the database table is missing a column (${msg}). Run motor/sql/motor-setup.sql in Supabase.`;
-    return msg + (err.code ? ` [${err.code}]` : '');
+    if (/column|schema cache|check constraint/i.test(msg)) return `${msg} Run motor/sql/motor-standalone-upgrade.sql in the motor Supabase project.`;
+    return msg;
   }
 
   // ---------- Utilities ----------
