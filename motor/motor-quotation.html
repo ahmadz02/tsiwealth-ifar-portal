@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSI Wealth Planners - Motor Takaful Quotation</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../supabase-config.js"></script>
+<script src="motor-assets.js"></script>
+<style>
+  body { font-family: 'Inter', sans-serif; }
+  .brand-navy { color:#212F6E; }
+  .bg-brand-navy { background-color:#212F6E; }
+  .border-brand-navy { border-color:#212F6E; }
+  .money { text-align:right; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+<header class="bg-brand-navy text-white shadow-md">
+  <div class="max-w-4xl mx-auto px-4 sm:px-6 h-16 flex items-center gap-3">
+    <div class="bg-white/10 p-2 rounded-lg text-yellow-300"><i class="fa-solid fa-car-side text-xl"></i></div>
+    <div class="mr-auto">
+      <h1 class="font-bold text-lg leading-none">TSI Wealth Planners</h1>
+      <span id="header-sub" class="text-xs text-slate-300">Motor Takaful Quotation</span>
+    </div>
+    <div class="hidden sm:block text-right">
+      <p id="auth-user-name" class="text-xs font-semibold text-white"></p>
+      <p id="auth-user-email" class="text-[10px] text-slate-300"></p>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-4xl mx-auto px-4 sm:px-6 py-8 pb-28">
+  <div id="page-state" class="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 text-center">
+    <i class="fa-solid fa-circle-notch fa-spin text-2xl brand-navy"></i>
+    <p class="text-sm text-slate-500 mt-3">Loading the quotation...</p>
+  </div>
+  <div id="quotation-card" class="hidden bg-white rounded-2xl border border-slate-200 shadow-md p-5 sm:p-8 space-y-7"></div>
+</main>
+
+<!-- Action bar -->
+<div id="action-bar" class="hidden fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t border-slate-200 shadow-[0_-4px_12px_rgba(0,0,0,0.05)] z-40">
+  <div class="max-w-4xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center gap-2">
+    <p id="save-state" class="text-xs mr-auto"></p>
+    <button id="btn-return" onclick="returnToDashboard()" class="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 text-sm font-semibold inline-flex items-center gap-2">
+      <i class="fa-solid fa-arrow-left"></i><span>Return to Dashboard</span>
+    </button>
+    <button id="btn-pdf" onclick="downloadPdf()" class="px-4 py-2.5 rounded-xl bg-slate-900 text-white text-sm font-semibold inline-flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed">
+      <i class="fa-solid fa-file-pdf"></i><span>Download as PDF</span>
+    </button>
+    <button id="btn-save" onclick="saveQuotation()" class="px-5 py-2.5 rounded-xl bg-brand-navy hover:opacity-90 text-white text-sm font-semibold inline-flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed">
+      <i class="fa-solid fa-floppy-disk"></i><span>Save</span>
+    </button>
+  </div>
+</div>
+
+<div id="toast-container" class="fixed top-4 right-4 z-50 max-w-sm space-y-2"></div>
+
+<script>
+// ?ws=admin → opened from the Super Admin page (admin/admin-motor.html)
+const params = new URLSearchParams(window.location.search);
+const WORKSPACE = params.get('ws') === 'admin' ? 'ADMIN' : 'IFAR';
+const TABLE = 'motor_quotations';
+const DASHBOARD_PAGE = WORKSPACE === 'ADMIN' ? '../admin/admin-motor.html' : 'index.html';
+const DRAFT_KEY = `mtq-draft-${WORKSPACE.toLowerCase()}`;
+let AUTH_USER = null;
+const COMPANY_ADDRESS = 'D-20-3A, Menara SuezCap 1, No.2, Jalan Kerinchi, Gerbang Kerinchi Lestari, 59200, Kuala Lumpur';
+const COMPANY_CONTACT = 'Tel : (603) 2303 1987   |   Email: admin@tsiwealth.com   |   Website: www.tsiwealth.com.my';
+const PAYMENT_INFO = {
+  bank: 'CIMB Islamic',
+  account: '8605462571',
+  name: 'TSI WEALTH PLANNERS SDN. BHD.',
+  reference: 'Nama dalam policy'
+};
+const OPERATOR_STYLE = {
+  'Etiqa General Takaful Berhad':        { color: '#E8A317', tint: '#FDF3D7' },
+  'Syarikat Takaful Malaysia Am Berhad': { color: '#2E9E4F', tint: '#DFF3E5' },
+  'Takaful Ikhlas General Berhad':       { color: '#7CB82F', tint: '#EAF5DC' },
+  'Zurich General Takaful Berhad':       { color: '#1F63B5', tint: '#DCE8F7' }
+};
+// Columns written on Save (each quotation is its own row; changes apply to that row only)
+const SAVE_FIELDS = ['ifar_name', 'ifar_phone', 'owner_name', 'owner_id_no', 'vehicle_reg_no', 'vehicle_type', 'vehicle_model',
+  'engine_capacity', 'usage_type', 'vehicle_address', 'prospect_email', 'prospect_phone', 'ncd', 'coverage_term',
+  'coverage_start', 'coverage_end', 'quotes'];
+const LOGO_RATIO = 1600 / 349;
+
+let record = null;         // quotation data shown on the page
+let savedId = null;         // row id once saved
+let draft = null;           // unsaved form from the dashboard
+let dirty = false;          // true = something on screen is not saved yet
+let selection = null;       // { qi, code }
+let excludeRoadTax = false;
+let saving = false;
+
+window.addEventListener('DOMContentLoaded', init);
+window.addEventListener('beforeunload', e => { if (dirty && !saving) { e.preventDefault(); e.returnValue = ''; } });
+
+// Login guard (same as the other portal modules); the admin view also needs Super Admin
+async function requireMotorUser() {
+  if (typeof supabaseClient === 'undefined') { window.location.replace('../login.html'); return false; }
+  const { data, error } = await supabaseClient.auth.getUser();
+  if (error || !data?.user) { window.location.replace('../login.html'); return false; }
+  if (WORKSPACE === 'ADMIN') {
+    const check = await supabaseClient.rpc('is_super_admin');
+    if (check.error || check.data !== true) { window.location.replace('../index.html'); return false; }
+    document.getElementById('header-sub').textContent = 'Motor Takaful Quotation · Super Admin';
+  }
+  AUTH_USER = data.user;
+  const meta = AUTH_USER.user_metadata || {};
+  document.getElementById('auth-user-name').textContent = meta.full_name || meta.name || String(AUTH_USER.email || 'User').split('@')[0];
+  document.getElementById('auth-user-email').textContent = AUTH_USER.email || '';
+  return true;
+}
+
+function auditEntry(action) {
+  return { action, timestamp: new Date().toISOString(), by: AUTH_USER?.email || '' };
+}
+
+async function init() {
+  if (!(await requireMotorUser())) return;
+  if (params.get('id')) {
+    // RLS returns only rows this user may see (own quotations, or everything for Super Admin)
+    const { data, error } = await supabaseClient.from(TABLE).select('*').eq('id', params.get('id')).maybeSingle();
+    if (error) { console.error(error); return showFatal('Unable to open quotation', error.message || 'The database is unavailable.'); }
+    if (!data) return showFatal('Quotation not found', 'It may have been deleted, or it belongs to another account.');
+    record = data; savedId = data.id; dirty = false;
+  } else if (params.get('draft')) {
+    try { draft = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || 'null'); } catch (_) { draft = null; }
+    if (!draft || !draft.record) return showFatal('No unsaved quotation found', 'Go back to the dashboard and click "View Quotation Form" again.');
+    record = draft.record;
+    savedId = draft.mode === 'edit' ? draft.id : null;
+    dirty = true;
+  } else {
+    return showFatal('Nothing to show', 'Open a quotation from the dashboard.');
+  }
+  record.quotes = Array.isArray(record.quotes) ? record.quotes : [];
+  restoreSelection(record.selected_quote);
+  renderPage();
+}
+
+const isLocked = () => !!record && (record.status === 'ACCEPTED' || record.status === 'DECLINED');
+
+function restoreSelection(sel) {
+  selection = null; excludeRoadTax = false;
+  if (!sel) return;
+  const qi = record.quotes.findIndex(q => q.operator === sel.operator);
+  if (qi < 0) return;
+  if (!(record.quotes[qi].options || []).some(o => o.code === sel.option_code)) return;
+  selection = { qi, code: sel.option_code };
+  excludeRoadTax = !!sel.exclude_road_tax;
+}
+
+// ---------- Render ----------
+function renderPage() {
+  document.getElementById('page-state').classList.add('hidden');
+  const card = document.getElementById('quotation-card');
+  card.classList.remove('hidden');
+  document.getElementById('action-bar').classList.remove('hidden');
+  const p = record;
+
+  const details = [
+    ['Name of Vehicle Owner', p.owner_name, true],
+    ['IC / Passport No.', p.owner_id_no], ['Vehicle Reg. No.', p.vehicle_reg_no],
+    ['Type of Vehicle', p.vehicle_type], ['Usage Type', p.usage_type],
+    ['Brand & Model', p.vehicle_model], ['Engine Capacity', p.engine_capacity],
+    ['NCD', p.ncd], ['Coverage Term', coverageText(p)],
+    ['Email', p.prospect_email], ['Phone No.', p.prospect_phone],
+    ['Vehicle Address', p.vehicle_address, true]
+  ].map(([k, v, wide]) => `
+    <div class="flex border-b border-slate-200 ${wide ? 'sm:col-span-2' : ''}">
+      <div class="w-36 shrink-0 bg-sky-50 text-[11px] font-bold text-slate-600 px-3 py-2 text-right">${k}</div>
+      <div class="px-3 py-2 text-sm text-slate-800 break-words">${escapeHtml(v || '—')}</div>
+    </div>`).join('');
+
+  let banner = '';
+  if (isLocked()) {
+    const acc = p.status === 'ACCEPTED';
+    banner = `<div class="rounded-xl px-4 py-3 text-sm font-semibold ${acc ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}">
+      <i class="fa-solid ${acc ? 'fa-circle-check' : 'fa-circle-xmark'} mr-1.5"></i>${acc ? 'Accepted' : 'Declined'} on ${fmtDMY(p.responded_at)}. This quotation can no longer be changed.</div>`;
+  } else if (draft && draft.mode === 'renew') {
+    banner = `<div class="rounded-xl px-4 py-3 text-xs bg-sky-50 text-sky-800 border border-sky-200"><i class="fa-solid fa-rotate mr-1.5"></i>Renewal quotation. Saving creates a new quotation; the original stays unchanged.</div>`;
+  }
+
+  card.innerHTML = `
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-5">
+      <img src="data:image/png;base64,${LOGO_BASE64}" alt="TSI Wealth Planners" class="h-8 w-auto self-start">
+      <div class="sm:text-right">
+        <h2 class="text-lg font-bold text-slate-900">Motor Takaful Quotation</h2>
+        <p id="ref-line" class="text-xs text-slate-500 font-mono"></p>
+      </div>
+    </div>
+    <div class="pdf-hide">${banner}</div>
+    <div class="border border-slate-200 rounded-xl overflow-hidden grid grid-cols-1 sm:grid-cols-2">${details}</div>
+    <div class="text-sm text-slate-600">
+      <p>I would like to submit the following proposal for your review and consideration:</p>
+      ${isLocked() ? '' : '<p class="pdf-hide text-xs text-slate-400 mt-1">Optional: tap SELECT to mark the option the client prefers. Tap the X to cancel.</p>'}
+    </div>
+    <div id="quotes-container" class="space-y-5"></div>
+    <div id="selection-summary"></div>
+    <div class="rounded-xl bg-brand-navy text-white p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-5">
+      <div class="flex-1 min-w-0">
+      <p class="text-sm font-bold mb-1"><i class="fa-solid fa-building-columns mr-1.5 text-yellow-300"></i>Payment Instruction</p>
+      <p class="text-xs text-slate-300 mb-3">Please bank in the payable amount to:</p>
+      <dl class="grid grid-cols-[110px_1fr] gap-y-2 text-sm">
+        <dt class="text-slate-300">Bank</dt><dd class="font-semibold">${PAYMENT_INFO.bank}</dd>
+        <dt class="text-slate-300">Account No.</dt>
+        <dd class="font-semibold flex flex-wrap items-center gap-2"><span class="font-mono text-base tracking-wider">${PAYMENT_INFO.account}</span>
+          <button type="button" onclick="copyText('${PAYMENT_INFO.account}','Account number copied')" class="pdf-hide px-2 py-0.5 rounded bg-white/15 hover:bg-white/25 text-[11px]"><i class="fa-solid fa-copy mr-1"></i>Copy</button></dd>
+        <dt class="text-slate-300">Account Name</dt><dd class="font-semibold">${PAYMENT_INFO.name}</dd>
+        <dt class="text-slate-300">Reference</dt><dd class="font-semibold">${PAYMENT_INFO.reference} <span class="text-slate-300 font-normal">(name as in the policy)</span></dd>
+      </dl>
+      </div>
+      <div class="shrink-0 self-center bg-white rounded-xl p-2.5 text-center">
+        <img src="data:image/png;base64,${PAYMENT_QR_BASE64}" alt="TSI WEALTH-QR payment QR code" class="w-36 h-auto block mx-auto">
+        <p class="text-[10px] font-semibold text-slate-500 mt-1">Scan to pay</p>
+      </div>
+    </div>
+    <div class="pt-4 border-t border-slate-100 text-[11px] text-slate-400 leading-relaxed">
+      <p class="font-semibold text-slate-500">TSI Wealth Planners</p>
+      <p>${COMPANY_ADDRESS}</p>
+      <p>${COMPANY_CONTACT}</p>
+      <p class="mt-2">IFAR: ${escapeHtml(p.ifar_name)}${p.ifar_phone ? ` (${escapeHtml(p.ifar_phone)})` : ''}</p>
+    </div>`;
+
+  renderQuotes();
+  renderSummary();
+  renderActionState();
+}
+
+function renderActionState() {
+  const ref = document.getElementById('ref-line');
+  if (ref) ref.textContent = savedId
+    ? `${record.reference_no || ''}${record.quotation_date ? '  |  Quotation date ' + fmtDMY(record.quotation_date) : ''}`
+    : 'New quotation (not saved yet)';
+
+  const btnSave = document.getElementById('btn-save');
+  const btnPdf = document.getElementById('btn-pdf');
+  btnSave.disabled = isLocked() || saving || !dirty;
+  btnPdf.disabled = saving || dirty || !savedId;     // only after Save
+  btnPdf.title = btnPdf.disabled ? 'Click Save first' : '';
+
+  const st = document.getElementById('save-state');
+  if (isLocked()) st.innerHTML = '<span class="text-slate-500"><i class="fa-solid fa-lock mr-1"></i>Read only</span>';
+  else if (dirty) st.innerHTML = '<span class="text-amber-700 font-semibold"><i class="fa-solid fa-circle-exclamation mr-1"></i>Not saved yet. Click Save to keep it.</span>';
+  else st.innerHTML = '<span class="text-emerald-700 font-semibold"><i class="fa-solid fa-circle-check mr-1"></i>Saved</span>';
+}
+
+function renderQuotes() {
+  const locked = isLocked();
+  document.getElementById('quotes-container').innerHTML = record.quotes.map((q, qi) => {
+    const style = OPERATOR_STYLE[q.operator] || { color: '#64748b', tint: '#f1f5f9' };
+    const rows = (q.options || []).map((o, n) => {
+      const isSel = selection && selection.qi === qi && selection.code === o.code;
+      let action = '';
+      if (locked) {
+        action = isSel ? `<span class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-amber-400 text-slate-900 text-[11px] font-bold"><i class="fa-solid fa-check"></i>SELECTED</span>` : '';
+      } else if (isSel) {
+        action = `<div class="flex items-center justify-end gap-1.5">
+            <span class="inline-flex items-center gap-1 px-2 py-1.5 rounded-md bg-amber-400 text-slate-900 text-[11px] font-bold"><i class="fa-solid fa-check"></i>SELECTED</span>
+            <button onclick="cancelSelection()" title="Cancel selection" aria-label="Cancel selection" class="w-7 h-7 rounded-md border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100"><i class="fa-solid fa-xmark"></i></button>
+          </div>`;
+      } else {
+        action = `<button onclick="selectOption(${qi},'${o.code}')" ${selection ? 'disabled title="Cancel the current selection first"' : ''}
+            class="px-3 py-1.5 rounded-md text-[11px] font-bold tracking-wide border ${selection ? 'border-slate-200 text-slate-300 cursor-not-allowed' : 'border-brand-navy brand-navy hover:bg-brand-navy hover:text-white'}">SELECT</button>`;
+      }
+      return `<tr class="border-t border-slate-100 ${isSel ? 'bg-amber-50' : ''}" ${isSel ? 'data-selected="1"' : ''}>
+        <td class="px-3 py-2.5 text-xs text-slate-400">${n + 1}</td>
+        <td class="px-3 py-2.5 text-xs font-bold text-slate-800">${escapeHtml(o.name)}</td>
+        <td class="px-3 py-2.5 text-xs money">RM${fmtMoney(o.takaful_price)}</td>
+        <td class="px-3 py-2.5 text-xs money">RM${fmtMoney(o.road_tax)}</td>
+        <td class="px-3 py-2.5 text-xs money">RM${fmtMoney(o.admin_fee)}</td>
+        <td class="px-3 py-2.5 text-xs money font-bold text-slate-900">RM${fmtMoney(optTotal(o))}</td>
+        <td class="pdf-action px-3 py-2.5 text-right whitespace-nowrap">${action}</td>
+      </tr>`;
+    }).join('');
+
+    return `<div class="border border-slate-200 rounded-xl overflow-hidden flex">
+      <div class="w-2 shrink-0" style="background:${style.color}"></div>
+      <div class="flex-1 min-w-0">
+        <div class="flex flex-wrap justify-between items-center gap-2 px-4 py-2.5" style="background:${style.tint}">
+          <span class="font-bold text-sm text-slate-900">${escapeHtml(q.operator)}</span>
+          <span class="text-xs text-slate-600 flex flex-wrap gap-x-4">
+            <span>Sum Covered: <b class="text-slate-900">RM${fmtMoney(q.sum_covered)}</b></span>
+            ${hasValue(q.windscreen_covered) ? `<span>Windscreen Covered: <b class="text-slate-900">RM${fmtMoney(q.windscreen_covered)}</b></span>` : ''}
+          </span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full min-w-[640px]">
+            <thead class="text-[11px] text-slate-500 bg-slate-50">
+              <tr><th class="px-3 py-2 text-left font-semibold">#</th><th class="px-3 py-2 text-left font-semibold">Type</th>
+              <th class="px-3 py-2 text-right font-semibold">Takaful</th><th class="px-3 py-2 text-right font-semibold">Road Tax</th>
+              <th class="px-3 py-2 text-right font-semibold">Admin Fee</th><th class="px-3 py-2 text-right font-semibold">Total</th><th class="pdf-action px-3 py-2"></th></tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+        ${q.note ? `<p class="px-4 py-2 text-[11px] font-bold text-slate-600 border-t border-slate-100 text-center uppercase">${escapeHtml(q.note)}</p>` : ''}
+      </div>
+    </div>`;
+  }).join('') || `<p class="text-sm text-slate-400">No options were included in this quotation.</p>`;
+}
+
+function renderSummary() {
+  const el = document.getElementById('selection-summary');
+  const s = currentSelectionDetail();
+  if (!s) { el.innerHTML = ''; return; }
+  el.innerHTML = `
+    <div class="rounded-xl border-2 border-amber-300 bg-amber-50 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+      <div>
+        <p class="text-[11px] font-bold text-amber-700">Selected option</p>
+        <p class="text-sm font-bold text-slate-900">${escapeHtml(s.operator)}</p>
+        <p class="text-xs text-slate-600">${escapeHtml(s.option_name)}, Sum Covered RM${fmtMoney(s.sum_covered)}${hasValue(s.windscreen_covered) ? `, Windscreen RM${fmtMoney(s.windscreen_covered)}` : ''}</p>
+        ${isLocked()
+          ? (s.exclude_road_tax ? `<p class="mt-2 text-xs font-semibold text-amber-800"><i class="fa-solid fa-square-check mr-1"></i>Road Tax excluded</p>` : '')
+          : `<label data-pdf-exclude="${s.exclude_road_tax ? '1' : '0'}" class="mt-2 inline-flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer select-none">
+               <input id="exclude-roadtax" type="checkbox" ${s.exclude_road_tax ? 'checked' : ''} onchange="toggleExcludeRoadTax(this.checked)"
+                 class="w-4 h-4 rounded border-slate-400 accent-[#212F6E] cursor-pointer">
+               Exclude Road Tax
+             </label>`}
+      </div>
+      <div class="sm:text-right">
+        <p class="text-[11px] text-slate-500">${s.exclude_road_tax ? 'Takaful price payable' : 'Total payable'}</p>
+        <p class="text-2xl font-extrabold text-slate-900 tabular-nums">RM${fmtMoney(s.total)}</p>
+        ${s.exclude_road_tax ? `<p class="text-[11px] text-slate-400 line-through tabular-nums">RM${fmtMoney(s.full_total)}</p>` : ''}
+      </div>
+    </div>`;
+}
+
+// ---------- Selection ----------
+function markDirty() { dirty = true; renderActionState(); }
+
+function selectOption(qi, code) {
+  if (isLocked() || selection) return;
+  selection = { qi, code };
+  renderQuotes(); renderSummary(); markDirty();
+  document.getElementById('selection-summary').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function cancelSelection() {
+  if (isLocked()) return;
+  selection = null; excludeRoadTax = false;
+  renderQuotes(); renderSummary(); markDirty();
+}
+
+function toggleExcludeRoadTax(checked) {
+  if (isLocked()) return;
+  excludeRoadTax = checked;
+  renderSummary(); markDirty();
+}
+
+function currentSelectionDetail() {
+  if (!selection) return null;
+  const q = record.quotes[selection.qi];
+  const o = q && (q.options || []).find(x => x.code === selection.code);
+  if (!o) return null;
+  return {
+    operator: q.operator, sum_covered: num(q.sum_covered),
+    windscreen_covered: hasValue(q.windscreen_covered) ? num(q.windscreen_covered) : null,
+    note: q.note || '', option_code: o.code, option_name: o.name,
+    takaful_price: num(o.takaful_price), road_tax: num(o.road_tax), admin_fee: num(o.admin_fee),
+    exclude_road_tax: excludeRoadTax,
+    full_total: optTotal(o),
+    total: excludeRoadTax ? num(o.takaful_price) : optTotal(o)   // excluded → Takaful Price only
+  };
+}
+
+// ---------- Save ----------
+async function saveQuotation() {
+  if (isLocked() || saving || !dirty) return;
+  saving = true;
+  const btn = document.getElementById('btn-save');
+  btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i><span>Saving...</span>';
+  renderActionState();
+
+  const now = new Date().toISOString();
+  const payload = {};
+  SAVE_FIELDS.forEach(k => { payload[k] = record[k] ?? null; });
+  payload.quotes = record.quotes;
+  payload.selected_quote = currentSelectionDetail();
+  payload.quotation_date = now;     // latest saved quotation
+  payload.updated_at = now;
+
+  let result;
+  if (savedId) {
+    payload.audit_log = [...(record.audit_log || []), auditEntry('Quotation saved')];
+    result = await supabaseClient.from(TABLE).update(payload).eq('id', savedId).eq('status', 'QUOTED').select('*');
+    if (!result.error) {
+      if (!result.data || !result.data.length) result.error = { message: 'This quotation was accepted, declined or deleted in the meantime, so it was not changed.' };
+      else result.data = result.data[0];
+    }
+  } else {
+    // reference number, owner and timestamps are set by the database
+    payload.status = 'QUOTED';
+    payload.workspace = WORKSPACE;
+    payload.renewed_from = (draft && draft.renewed_from) || null;
+    payload.audit_log = [auditEntry(payload.renewed_from ? 'Renewal quotation created' : 'Quotation created')];
+    delete payload.updated_at;
+    result = await supabaseClient.from(TABLE).insert(payload).select('*').single();
+  }
+
+  saving = false;
+  btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i><span>Save</span>';
+  if (result.error) {
+    console.error(result.error);
+    renderActionState();
+    return showToast(`Unable to save: ${result.error.message || result.error}`, 'error');
+  }
+
+  record = result.data;
+  record.quotes = Array.isArray(record.quotes) ? record.quotes : [];
+  savedId = record.id;
+  dirty = false;
+  draft = null;
+  try { sessionStorage.removeItem(DRAFT_KEY); } catch (_) {}
+  history.replaceState(null, '', `${location.pathname}?id=${encodeURIComponent(savedId)}`);
+  renderActionState();
+  showToast(`Saved as ${record.reference_no}. You can now download the PDF.`);
+}
+
+// ---------- Return ----------
+function returnToDashboard() {
+  if (dirty && !isLocked()) {
+    if (draft) {
+      if (!confirm('This quotation has not been saved.\n\nGo back to the dashboard? Your entries will be kept in the form so you can continue.')) return;
+      try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ ...draft, record: { ...draft.record, selected_quote: currentSelectionDetail() }, returning: true })); } catch (_) {}
+    } else if (!confirm('Your changes on this page have not been saved. Leave without saving?')) {
+      return;
+    }
+  }
+  dirty = false;
+  window.location.href = DASHBOARD_PAGE;
+}
+
+// ---------- PDF (same design as this page, without the SELECT buttons) ----------
+function pdfFileName() {
+  const clean = v => String(v || '').trim().replace(/\s+/g, '').replace(/[^A-Za-z0-9-]+/g, '');
+  const d = record.quotation_date ? new Date(record.quotation_date) : new Date();
+  const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  return `Quotation_${clean(record.reference_no)}_${clean(record.vehicle_reg_no)}_${ymd}.pdf`;
+}
+
+async function downloadPdf() {
+  if (dirty || !savedId) return showToast('Please click Save first.', 'error');
+  const btn = document.getElementById('btn-pdf');
+  const label = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i><span>Creating PDF...</span>';
+  try {
+    const blob = await buildQuotationPdf();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = pdfFileName();
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  } catch (err) {
+    console.error(err);
+    showToast('Unable to create the PDF.', 'error');
+  } finally {
+    btn.innerHTML = label;
+    renderActionState();
+  }
+}
+
+// Copy of the quotation card, cleaned for print
+function buildPrintCopy() {
+  const clone = document.getElementById('quotation-card').cloneNode(true);
+  clone.removeAttribute('id');
+  clone.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
+  clone.querySelectorAll('.pdf-hide, .pdf-action').forEach(el => el.remove());
+  clone.querySelectorAll('svg.svg-inline--fa, i.fa-solid, i.fa-regular').forEach(el => el.remove()); // icons render off-line in print
+  // mark the selected option inside its row instead of the SELECT column
+  clone.querySelectorAll('tr[data-selected="1"]').forEach(tr => {
+    const typeCell = tr.children[1];
+    if (typeCell) typeCell.insertAdjacentHTML('beforeend',
+      ' <span style="display:inline-block;margin-left:6px;padding:0 6px;border-radius:4px;background:#fbbf24;color:#0f172a;font-size:10px;line-height:16px;font-weight:700;vertical-align:middle;">SELECTED</span>');
+  });
+  // the Exclude Road Tax tick box becomes plain text
+  clone.querySelectorAll('[data-pdf-exclude]').forEach(lbl => {
+    if (lbl.dataset.pdfExclude === '1') lbl.outerHTML = '<p class="mt-2 text-xs font-semibold text-amber-800">Road Tax excluded</p>';
+    else lbl.remove();
+  });
+  clone.className = 'bg-white space-y-7';
+  clone.style.cssText = 'width:820px;padding:0;margin:0;border:none;box-shadow:none;';
+  return clone;
+}
+
+async function buildQuotationPdf() {
+  const holder = document.createElement('div');
+  holder.style.cssText = 'position:absolute;left:-12000px;top:0;width:820px;background:#ffffff;';
+  const copy = buildPrintCopy();
+  holder.appendChild(copy);
+  document.body.appendChild(holder);
+
+  try {
+    if (document.fonts && document.fonts.ready) await document.fonts.ready;
+    // a little extra room under each section so the last line of text is never clipped
+    [...copy.children].forEach(el => {
+      el.style.paddingBottom = (parseFloat(getComputedStyle(el).paddingBottom) || 0) + 4 + 'px';
+    });
+
+    // each section is placed whole, so tables are never cut across pages
+    const blocks = [];
+    [...copy.children].forEach(el => {
+      if (!el.offsetHeight) return;
+      if (el.children.length > 1 && el.classList.contains('space-y-5')) blocks.push(...[...el.children]); // operator tables
+      else blocks.push(el);
+    });
+
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
+    const W = pdf.internal.pageSize.getWidth(), H = pdf.internal.pageSize.getHeight();
+    const M = 28, CW = W - M * 2, BOTTOM = H - 30, GAP = 12;
+    const ptPerPx = CW / 820;
+    let y = M;
+
+    for (const el of blocks) {
+      const canvas = await html2canvas(el, { scale: 2, backgroundColor: '#ffffff', windowWidth: 1100, useCORS: true, logging: false });
+      if (!canvas.width || !canvas.height) continue;
+      const h = (canvas.height / 2) * ptPerPx;
+      const w = (canvas.width / 2) * ptPerPx;
+      if (y + h > BOTTOM && y > M) { pdf.addPage(); y = M; }
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', M, y, w, Math.min(h, BOTTOM - M));
+      y += h + GAP;
+    }
+
+    const pages = pdf.internal.getNumberOfPages();
+    for (let i = 1; i <= pages; i++) {
+      pdf.setPage(i);
+      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7); pdf.setTextColor(140);
+      pdf.text(`${record.reference_no || ''}   |   Page ${i} of ${pages}`, W / 2, H - 14, { align: 'center' });
+    }
+    return pdf.output('blob');
+  } finally {
+    holder.remove();
+  }
+}
+
+// ---------- Utilities ----------
+function num(v) { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; }
+function hasValue(v) { return v !== null && v !== undefined && v !== '' && num(v) > 0; }
+function optTotal(o) { return num(o.takaful_price) + num(o.road_tax) + num(o.admin_fee); }
+function fmtMoney(v) { return num(v).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function fmtDMY(v) {
+  if (!v) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) { const [y, m, d] = v.split('-'); return `${d}/${m}/${y}`; }
+  const d = new Date(v), pad = n => String(n).padStart(2, '0');
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+}
+function coverageText(p) {
+  if (p.coverage_start && p.coverage_end) return `${fmtDMY(p.coverage_start)} – ${fmtDMY(p.coverage_end)}`;
+  return p.coverage_term || '';
+}
+
+function copyText(text, msg) { navigator.clipboard.writeText(text).then(() => showToast(msg)); }
+
+function showFatal(title, message) {
+  document.getElementById('quotation-card').classList.add('hidden');
+  const el = document.getElementById('page-state');
+  el.classList.remove('hidden');
+  el.innerHTML = `<div class="w-12 h-12 mx-auto rounded-full bg-rose-50 text-rose-500 flex items-center justify-center"><i class="fa-solid fa-file-circle-exclamation"></i></div>
+    <h2 class="text-lg font-bold text-slate-800 mt-4">${escapeHtml(title)}</h2><p class="text-sm text-slate-500 mt-1">${escapeHtml(message)}</p>
+    <a href="${DASHBOARD_PAGE}" class="inline-flex items-center gap-2 mt-5 px-4 py-2.5 rounded-xl bg-brand-navy text-white text-sm font-semibold"><i class="fa-solid fa-arrow-left"></i>Return to Dashboard</a>`;
+}
+
+function showToast(message, type = 'success') {
+  const el = document.createElement('div');
+  el.className = `px-4 py-3 rounded-xl shadow-xl text-xs font-semibold ${type === 'error' ? 'bg-rose-600' : 'bg-emerald-600'} text-white`;
+  el.textContent = message;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), type === 'error' ? 8000 : 4000);
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>'"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#039;', '"': '&quot;' }[ch]));
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin Motor Takaful | IFAR Portal</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../supabase-config.js"></script>
+<script src="admin-common.js"></script>
+<style>
+  body { font-family: 'Inter', sans-serif; }
+  .brand-navy { color: #212F6E; }
+  .bg-brand-navy { background-color: #212F6E; }
+  .bg-brand-gold { background-color: #FFCB08; }
+  .text-brand-gold { color: #FFCB08; }
+  .border-brand-navy { border-color: #212F6E; }
+  .ring-brand { --tw-ring-color: #212F6E; }
+  .field { width:100%; padding:.6rem .85rem; border-radius:.75rem; border:1px solid #cbd5e1; font-size:.875rem; background:#fff; }
+  .field:focus { outline:none; border-color:#212F6E; box-shadow:0 0 0 2px rgba(33,47,110,.18); }
+  .field-label { display:block; font-size:.72rem; font-weight:600; color:#334155; margin-bottom:.3rem; }
+  .money { text-align:right; font-variant-numeric: tabular-nums; }
+  input[type=number]::-webkit-inner-spin-button { opacity:.4; }
+  .locked { opacity:.45; pointer-events:none; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+
+<header class="bg-[#212F6E] text-white border-b-2 border-[#FFCB08]">
+  <div class="max-w-7xl mx-auto px-5 h-16 flex justify-between items-center">
+    <div>
+      <a href="admin-dashboard.html" class="font-bold">← Super Admin</a>
+      <div class="text-xs text-amber-300">Motor Takaful Quotations</div>
+    </div>
+    <div class="flex items-center gap-3 text-xs">
+      <span id="auth-user-email"></span>
+      <a href="../index.html" class="bg-white/10 px-3 py-2 rounded-lg">Adviser Portal</a>
+      <button onclick="adminLogout()" class="bg-white/10 px-3 py-2 rounded-lg">Logout</button>
+    </div>
+  </div>
+</header>
+
+<div id="toast-container" class="fixed top-20 right-4 z-[60] flex flex-col space-y-2 max-w-sm"></div>
+
+<div id="motor-app" class="flex-1 flex flex-col"></div>
+<div id="admin-toast" class="hidden"></div>
+
+<script>
+  window.MOTOR_CONFIG = {
+    workspace: 'ADMIN',
+    quotePage: '../motor/motor-quotation.html?ws=admin',
+    loginPage: '../login.html',
+    homePage: '../index.html'
+  };
+</script>
+<script src="../motor/motor-dashboard.js"></script>
+</body>
+</html>

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSI Wealth Planners - Motor Takaful Quotation</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../supabase-config.js"></script>
+<style>
+  body { font-family: 'Inter', sans-serif; }
+  .brand-navy { color: #212F6E; }
+  .bg-brand-navy { background-color: #212F6E; }
+  .bg-brand-gold { background-color: #FFCB08; }
+  .text-brand-gold { color: #FFCB08; }
+  .border-brand-navy { border-color: #212F6E; }
+  .ring-brand { --tw-ring-color: #212F6E; }
+  .field { width:100%; padding:.6rem .85rem; border-radius:.75rem; border:1px solid #cbd5e1; font-size:.875rem; background:#fff; }
+  .field:focus { outline:none; border-color:#212F6E; box-shadow:0 0 0 2px rgba(33,47,110,.18); }
+  .field-label { display:block; font-size:.72rem; font-weight:600; color:#334155; margin-bottom:.3rem; }
+  .money { text-align:right; font-variant-numeric: tabular-nums; }
+  input[type=number]::-webkit-inner-spin-button { opacity:.4; }
+  .locked { opacity:.45; pointer-events:none; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+
+<header class="bg-brand-navy text-white shadow-md sticky top-0 z-40">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+    <div class="flex items-center space-x-3">
+      <div class="bg-white/10 p-2 rounded-lg text-yellow-300">
+        <i class="fa-solid fa-car-side text-xl"></i>
+      </div>
+      <div>
+        <h1 class="font-bold text-lg leading-none">TSI Wealth Planners</h1>
+        <span class="text-xs text-slate-300">Motor Takaful Quotation</span>
+      </div>
+    </div>
+
+    <a href="../index.html"
+      class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-white transition-all flex items-center gap-2">
+      <i class="fa-solid fa-table-cells-large"></i>
+      <span class="hidden sm:inline">Adviser Portal</span>
+    </a>
+
+    <div class="flex items-center gap-3">
+      <div class="hidden sm:block text-right">
+        <p id="auth-user-name" class="text-xs font-semibold text-white">User</p>
+        <p id="auth-user-email" class="text-[10px] text-slate-300"></p>
+      </div>
+      <button onclick="motorLogout()" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-white transition-all flex items-center gap-2">
+        <i class="fa-solid fa-right-from-bracket"></i><span>Logout</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div id="toast-container" class="fixed top-20 right-4 z-[60] flex flex-col space-y-2 max-w-sm"></div>
+
+<div id="motor-app" class="flex-1 flex flex-col"></div>
+
+<script>
+  window.MOTOR_CONFIG = {
+    workspace: 'IFAR',
+    quotePage: 'motor-quotation.html',
+    loginPage: '../login.html'
+  };
+</script>
+<script src="motor-dashboard.js"></script>
+</body>
+</html>
