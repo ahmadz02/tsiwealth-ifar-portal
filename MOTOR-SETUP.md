@@ -1,63 +1,66 @@
 # Motor Takaful Quotation — Setup
 
-The motor data **stays in its own Supabase project**. Logins stay in the portal project.
+Motor quotations live in the **portal database**, next to claims and confirmations.
+The old motor project keeps its data as a locked backup. Nothing there is deleted.
 
-| Project | ID | Holds |
+| Project | ID | Role |
 |---|---|---|
-| IFAR Portal | `xslqmzwgprvwlqsheeug` | Logins, claims, confirmations, `is_super_admin()` |
-| Motor | `olgijssakwgttfnomnwz` | `motor_proposals` table + `motor-gateway` Edge Function |
+| IFAR Portal | `xslqmzwgprvwlqsheeug` | The one database (`motor_quotations`) |
+| Motor (old) | `olgijssakwgttfnomnwz` | Locked backup of `motor_proposals` — copied once, then left alone |
 
-The browser never reads the motor table directly. Every call goes to the **motor-gateway** Edge Function,
-which checks the user's IFAR Portal login and applies the rules. The table itself is closed to the public key.
+## 1. Create the module in the portal database
 
-Nothing needs to be run in the portal project, and no data is moved.
+Portal project → SQL Editor → run `motor/sql/motor-setup.sql`
+(after `setup-super-admin.sql`, which provides `is_super_admin()`). Expected: "Success. No rows returned".
 
-## 1. Update and lock the motor database
+## 2. Export from the motor project
 
-Motor project (`olgijssakwgttfnomnwz`) → SQL Editor → run `motor/sql/motor-standalone-upgrade.sql`.
+Motor project → SQL Editor → run `motor/sql/motor-export.sql`.
 
-- Locks the table (no public access). This includes everything in `standalone-lock.sql`.
-- Adds the portal columns (owner, workspace, renewal link, updated by).
-- Existing quotations stay and become **Imported** quotations, visible to the Super Admin.
-- The last check query must return no rows.
+- 2a gives the number of quotations. Write it down.
+- 2b gives one `rows_json` cell. Open it, click inside, **Ctrl+A**, **Ctrl+C**.
+  The last line must be `]` (otherwise the copy was cut off — use the chunked query in the same file).
 
-The old standalone pages stop working after this step. That is intended.
+## 3. Import into the portal
 
-## 2. Deploy the gatekeeper function (motor project)
+Portal project → new SQL Editor tab → paste the whole of `motor/sql/motor-import.sql`.
+Select only the word `PASTE_THE_JSON_HERE`, paste (**Ctrl+V**) over it, keep both `$json$` markers, click **Run**.
 
-Motor project → **Edge Functions** → **Deploy a new function** → **Via Editor**:
+It returns `imported_rows`, `skipped_rows` (already copied) and `total_imported`.
+Running it again never creates duplicates.
 
-1. Name: `motor-gateway`
-2. Paste the contents of `motor/supabase/functions/motor-gateway/index.ts` and deploy.
-3. Open the function's **Details / Settings** and turn **OFF** "Enforce JWT verification" (Verify JWT).
-   The login token comes from the portal project, so the function checks it itself.
-   If this stays on, every call fails with 401.
+## 4. Check
 
-Then **Edge Functions → Secrets** (motor project), add:
+`total_imported` must equal the count from step 2a.
 
-| Name | Value |
-|---|---|
-| `PORTAL_SUPABASE_URL` | `https://xslqmzwgprvwlqsheeug.supabase.co` |
-| `PORTAL_PUBLISHABLE_KEY` | the portal key from `supabase-config.js` (`sb_publishable_iw0n…`) |
+What is copied: every quotation with its reference number, IFAR and prospect details, quotes, selected option,
+status, response date, coverage dates, renewal links and history. Old quotations go to the admin workspace
+(badge "Imported"). New reference numbers continue after the highest old number.
+Not copied: payment-slip files from the first standalone version — they stay in the motor project's storage.
 
-`SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are provided automatically.
-
-## 3. Deploy the website files
+## 5. Deploy the website files
 
 New: `motor/index.html`, `motor/motor-quotation.html`, `motor/motor-dashboard.js`, `motor/motor-api.js`,
 `motor/motor-assets.js`, `admin/admin-motor.html`.
 Changed: `index.html` (Motor tile), `admin/admin-dashboard.html` (Motor card).
 
-The `motor/sql` and `motor/supabase` folders are for Supabase, not the website (harmless if deployed).
+`motor/sql` is for Supabase, not the website (harmless if deployed).
 Do **not** deploy the old `motor-takaful/` folder. Delete it or move it out of the portal folder.
+
+## 6. Tidy up the motor project (after checking step 4)
+
+- Edge Functions → `motor-gateway` → delete it, and delete the secrets `PORTAL_SUPABASE_URL` and `PORTAL_PUBLISHABLE_KEY`.
+- Keep the `motor_proposals` table as the backup. It is already closed to the public
+  (if in doubt, run `motor/sql/standalone-lock.sql` there again — it is safe to repeat).
 
 ## How access works
 
 - **IFAR**: sees and manages only their own quotations.
 - **Super Admin** (`admin/admin-motor.html`): sees every IFAR quotation automatically, plus admin and imported quotations,
   and can edit, accept, decline, undo and delete them. The IFAR sees those changes.
-  Every change is written to the quotation's audit log with the user's email.
-- Reference numbers (`MTVP-YYYY-NNNNN`) come from the motor database sequence; the browser cannot set them.
+  Every change is written to the quotation's history with the user's email.
+- Enforced by the database (row level security + triggers), not by the page.
+- Reference numbers (`MTVP-YYYY-NNNNN`) come from one database sequence; the browser cannot set them.
 - Delete is allowed only while a quotation is awaiting a response.
 - New quotations prefill IFAR name and phone from the user's login profile (`full_name`, `phone`), when present.
 
@@ -69,6 +72,3 @@ Do **not** deploy the old `motor-takaful/` folder. Delete it or move it out of t
 4. Super Admin marks IFAR A's quotation Accepted; IFAR A refreshes and sees Accepted.
 5. Super Admin creates their own quotation (badge "Admin"); IFARs do not see it.
 6. A quotation expiring within 60 days shows "Create quotation"; after saving the renewal, the original shows "Renewal quoted".
-
-If a page shows "Unable to reach the motor quotation service" or a 401 error, check step 2
-(function name `motor-gateway`, JWT verification off, both secrets set).

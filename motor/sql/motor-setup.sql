@@ -46,8 +46,8 @@ create table if not exists public.motor_quotations (
   created_by_name     text,
   created_by_email    text,
   imported            boolean not null default false,
-  legacy_id           uuid unique,          -- id in the old standalone table
-  legacy_renewed_from uuid,                 -- renewed_from in the old standalone table
+  legacy_id           uuid unique,          -- id in the motor project (olgijssakwgttfnomnwz)
+  legacy_renewed_from uuid,                 -- renewed_from in the motor project
 
   -- IFAR (as printed on the quotation)
   ifar_name           text not null,
@@ -101,7 +101,7 @@ create unique index if not exists motor_quotations_renewed_from_uidx
 
 -- ---------- Triggers ----------
 -- Browser users run as 'anon' / 'authenticated'. Anything else (SQL Editor,
--- migration function, foreign-key actions, security-definer triggers) is trusted.
+-- import function, foreign-key actions, security-definer triggers) is trusted.
 
 create or replace function public.motor_quotations_before_insert()
 returns trigger
@@ -155,7 +155,7 @@ declare
                                   'updated_at', 'updated_by', 'updated_by_email'];
 begin
   if current_user not in ('anon', 'authenticated') then
-    -- system change (renewal link, migration): keep "last updated" as it was
+    -- system change (renewal link, import): keep "last updated" as it was
     if (to_jsonb(new) - v_skip) = (to_jsonb(old) - v_skip) then
       new.updated_at := old.updated_at;
       new.updated_by := old.updated_by;
@@ -254,10 +254,12 @@ create policy motor_quotations_delete on public.motor_quotations
   using (status = 'QUOTED'
          and ((workspace = 'IFAR' and created_by = auth.uid()) or public.is_super_admin()));
 
--- ---------- Migration from the standalone module ----------
--- Every imported row goes to the ADMIN workspace and keeps its old reference number.
--- Idempotent: rows already imported (same legacy id or reference number) are skipped,
--- so it can be run in chunks. Only callable from the SQL Editor.
+-- ---------- Import from the motor project ----------
+-- Copies the rows exported by motor-export.sql. Every old quotation keeps its reference
+-- number and goes to the ADMIN workspace (badge "Imported"). A row that was already
+-- created by a portal IFAR (workspace 'IFAR' with a portal user id) stays with that IFAR.
+-- Idempotent: rows already imported are skipped, so it can be run again or in chunks.
+-- Only callable from the SQL Editor.
 create or replace function public.motor_import_legacy(p_rows jsonb)
 returns table (imported_rows integer, skipped_rows integer, total_imported bigint)
 language plpgsql
@@ -268,6 +270,8 @@ declare
   r        jsonb;
   v_status text;
   v_term   text;
+  v_owner  uuid;
+  v_ifar   boolean;
   v_id     uuid;
   v_ok     integer := 0;
   v_skip   integer := 0;
@@ -285,16 +289,28 @@ begin
                      when v_status = 'DECLINED' then 'DECLINED'
                      else 'QUOTED' end;
     v_term := r ->> 'coverage_term';
+
+    -- keep IFAR ownership only when it points at a real portal user
+    v_owner := null;
+    if r ->> 'workspace' = 'IFAR' and coalesce(r ->> 'created_by', '') <> '' then
+      select u.id into v_owner from auth.users u where u.id = (r ->> 'created_by')::uuid;
+    end if;
+    v_ifar := v_owner is not null;
     v_id := null;
 
     insert into public.motor_quotations (
-      reference_no, workspace, created_by, created_by_name, imported, legacy_id, legacy_renewed_from,
+      reference_no, workspace, created_by, created_by_name, created_by_email, imported, legacy_id, legacy_renewed_from,
       ifar_name, ifar_phone, owner_name, owner_id_no, vehicle_reg_no, vehicle_type, vehicle_model,
       engine_capacity, usage_type, vehicle_address, prospect_email, prospect_phone, ncd, coverage_term,
       coverage_start, coverage_end, quotes, selected_quote, status, quotation_date, responded_at,
       audit_log, created_at, updated_at
     ) values (
-      r ->> 'reference_no', 'ADMIN', null, 'Imported (standalone)', true,
+      r ->> 'reference_no',
+      case when v_ifar then 'IFAR' else 'ADMIN' end,
+      v_owner,
+      case when v_ifar then r ->> 'created_by_name' else 'Imported (standalone)' end,
+      case when v_ifar then r ->> 'created_by_email' end,
+      not v_ifar,
       (r ->> 'id')::uuid, nullif(r ->> 'renewed_from', '')::uuid,
       coalesce(r ->> 'ifar_name', ''), coalesce(r ->> 'ifar_phone', ''),
       coalesce(r ->> 'owner_name', ''), coalesce(r ->> 'owner_id_no', ''),
@@ -316,7 +332,7 @@ begin
            else coalesce(nullif(r ->> 'responded_at', '')::timestamptz, nullif(r ->> 'closed_at', '')::timestamptz,
                          nullif(r ->> 'submitted_at', '')::timestamptz, nullif(r ->> 'updated_at', '')::timestamptz) end,
       (case when jsonb_typeof(r -> 'audit_log') = 'array' then r -> 'audit_log' else '[]'::jsonb end)
-        || jsonb_build_array(jsonb_build_object('action', 'Imported from the standalone module', 'timestamp', now())),
+        || jsonb_build_array(jsonb_build_object('action', 'Imported from the motor project', 'timestamp', now())),
       coalesce(nullif(r ->> 'created_at', '')::timestamptz, now()),
       coalesce(nullif(r ->> 'updated_at', '')::timestamptz, now())
     )
@@ -331,7 +347,7 @@ begin
     select distinct on (p.id) c.id as child_id, p.id as parent_id
     from public.motor_quotations c
     join public.motor_quotations p on p.legacy_id = c.legacy_renewed_from
-    where c.imported and c.renewed_from is null
+    where c.legacy_id is not null and c.renewed_from is null
       and not exists (select 1 from public.motor_quotations x where x.renewed_from = p.id)
     order by p.id, c.created_at
   )
@@ -350,7 +366,7 @@ begin
     perform setval('public.motor_quotation_ref_seq', v_max, true);
   end if;
 
-  return query select v_ok, v_skip, (select count(*) from public.motor_quotations where imported);
+  return query select v_ok, v_skip, (select count(*) from public.motor_quotations where legacy_id is not null);
 end;
 $$;
 revoke all on function public.motor_import_legacy(jsonb) from public, anon, authenticated;

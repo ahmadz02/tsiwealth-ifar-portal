@@ -920,11 +920,11 @@ const MOTOR_SHELL_HTML = `
     if (!document.getElementById('in-coverage-term').value) document.getElementById('in-coverage-term').value = text || '';
   }
 
-  // Turn a gatekeeper error into something readable
+  // Turn a database error into something readable
   function supabaseErrorText(err) {
     if (!err) return 'Unknown error.';
     const msg = err.message || String(err);
-    if (/column|schema cache|check constraint/i.test(msg)) return `${msg} Run motor/sql/motor-standalone-upgrade.sql in the motor Supabase project.`;
+    if (/column|schema cache|check constraint/i.test(msg)) return `${msg} Run motor/sql/motor-setup.sql in the portal Supabase project.`;
     return msg;
   }
 
