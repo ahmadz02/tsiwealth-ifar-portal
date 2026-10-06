@@ -141,7 +141,7 @@ const MOTOR_SHELL_HTML = `
             <div><label class="field-label">Vehicle Registration Number *</label><input id="in-reg-no" class="field uppercase" placeholder="e.g. AML3127"></div>
             <div><label class="field-label">Type of Vehicle *</label>
               <select id="in-vehicle-type" class="field" translate="no">
-                <option value="">Select type</option><option value="Sedan">Sedan</option><option value="SUV">SUV</option><option value="MPV">MPV</option><option value="Motorcycle">Motorcycle</option>
+                <option value="">Select type</option><option value="Sedan">Sedan</option><option value="SUV">SUV</option><option value="MPV">MPV</option><option value="Motorcycle">Motorcycle</option><option value="Pick Up">Pick Up</option><option value="Lorry">Lorry</option>
               </select>
             </div>
             <div><label class="field-label">Vehicle Brand and Model *</label><input id="in-vehicle-model" class="field" placeholder="e.g. Toyota Corolla Cross 1.8V"></div>
