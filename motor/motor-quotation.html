@@ -281,7 +281,7 @@ function renderQuotes() {
         <div class="flex flex-wrap justify-between items-center gap-2 px-4 py-2.5" style="background:${style.tint}">
           <span class="font-bold text-sm text-slate-900">${escapeHtml(q.operator)}</span>
           <span class="text-xs text-slate-600 flex flex-wrap gap-x-4">
-            <span>Sum Covered: <b class="text-slate-900">RM${fmtMoney(q.sum_covered)}</b></span>
+            ${hasValue(q.sum_covered) ? `<span>Sum Covered: <b class="text-slate-900">RM${fmtMoney(q.sum_covered)}</b></span>` : ''}
             ${hasValue(q.windscreen_covered) ? `<span>Windscreen Covered: <b class="text-slate-900">RM${fmtMoney(q.windscreen_covered)}</b></span>` : ''}
           </span>
         </div>
@@ -310,7 +310,7 @@ function renderSummary() {
       <div>
         <p class="text-[11px] font-bold text-amber-700">Selected option</p>
         <p class="text-sm font-bold text-slate-900">${escapeHtml(s.operator)}</p>
-        <p class="text-xs text-slate-600">${escapeHtml(s.option_name)}, Sum Covered RM${fmtMoney(s.sum_covered)}${hasValue(s.windscreen_covered) ? `, Windscreen RM${fmtMoney(s.windscreen_covered)}` : ''}</p>
+        <p class="text-xs text-slate-600">${escapeHtml(s.option_name)}${hasValue(s.sum_covered) ? `, Sum Covered RM${fmtMoney(s.sum_covered)}` : ''}${hasValue(s.windscreen_covered) ? `, Windscreen RM${fmtMoney(s.windscreen_covered)}` : ''}</p>
         ${isLocked()
           ? (s.exclude_road_tax ? `<p class="mt-2 text-xs font-semibold text-amber-800"><i class="fa-solid fa-square-check mr-1"></i>Road Tax excluded</p>` : '')
           : `<label data-pdf-exclude="${s.exclude_road_tax ? '1' : '0'}" class="mt-2 inline-flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer select-none">
@@ -355,7 +355,7 @@ function currentSelectionDetail() {
   const o = q && (q.options || []).find(x => x.code === selection.code);
   if (!o) return null;
   return {
-    operator: q.operator, sum_covered: num(q.sum_covered),
+    operator: q.operator, sum_covered: hasValue(q.sum_covered) ? num(q.sum_covered) : null,
     windscreen_covered: hasValue(q.windscreen_covered) ? num(q.windscreen_covered) : null,
     note: q.note || '', option_code: o.code, option_name: o.name,
     takaful_price: num(o.takaful_price), road_tax: num(o.road_tax), admin_fee: num(o.admin_fee),

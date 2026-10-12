@@ -742,6 +742,7 @@ const MOTOR_SHELL_HTML = `
       }).join('');
 
       const chosen = COVERAGE_OPTIONS.filter(o => st.options[o.code].checked);
+      const noSum = noSumCovered(st);
       const rows = chosen.map((o, n) => {
         const r = st.options[o.code];
         return `<tr class="border-t border-slate-100">
@@ -763,10 +764,10 @@ const MOTOR_SHELL_HTML = `
         </div>
         <div class="p-4 space-y-4">
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <div><label class="field-label">Sum Covered (RM) *</label>
-              <input type="number" min="0" step="0.01" value="${escapeHtml(st.sum_covered)}" placeholder="e.g. 94900" oninput="setOpField(${i},'sum_covered',this.value)" class="field money"></div>
+            <div><label class="field-label">Sum Covered (RM)${noSum ? '' : ' *'}</label>
+              <input type="number" min="0" step="0.01" value="${noSum ? '' : escapeHtml(st.sum_covered)}" placeholder="${noSum ? 'Not applicable' : 'e.g. 94900'}" ${noSum ? 'disabled title="Not applicable for Third Party"' : ''} oninput="setOpField(${i},'sum_covered',this.value)" class="field money"></div>
             <div><label class="field-label">Windscreen Covered (RM)</label>
-              <input type="number" min="0" step="0.01" value="${escapeHtml(st.windscreen_covered)}" placeholder="e.g. 3000" oninput="setOpField(${i},'windscreen_covered',this.value)" class="field money"></div>
+              <input type="number" min="0" step="0.01" value="${noSum ? '' : escapeHtml(st.windscreen_covered)}" placeholder="${noSum ? 'Not applicable' : 'e.g. 3000'}" ${noSum ? 'disabled title="Not applicable for Third Party"' : ''} oninput="setOpField(${i},'windscreen_covered',this.value)" class="field money"></div>
             <div><label class="field-label">Road Tax Amount (RM)</label>
               <input type="number" min="0" step="0.01" value="${escapeHtml(st.road_tax)}" placeholder="e.g. 359.40" oninput="setOpField(${i},'road_tax',this.value)" class="field money"></div>
             <div><label class="field-label">Admin Amount (RM)</label>
@@ -780,8 +781,8 @@ const MOTOR_SHELL_HTML = `
           <div class="border border-slate-200 rounded-xl overflow-hidden">
             <div class="px-3 py-2 bg-slate-50 text-xs text-slate-600 flex flex-wrap gap-x-6 gap-y-1 border-b border-slate-200">
               <span>Takaful Operator: <b class="text-slate-800">${escapeHtml(op.name)}</b></span>
-              <span>Sum Covered: <b class="text-slate-800" id="sc-label-${i}">${st.sum_covered ? 'RM ' + fmtMoney(st.sum_covered) : '—'}</b></span>
-              <span>Windscreen Covered: <b class="text-slate-800" id="ws-label-${i}">${st.windscreen_covered ? 'RM ' + fmtMoney(st.windscreen_covered) : '—'}</b></span>
+              ${noSum ? '' : `<span>Sum Covered: <b class="text-slate-800" id="sc-label-${i}">${st.sum_covered ? 'RM ' + fmtMoney(st.sum_covered) : '—'}</b></span>
+              <span>Windscreen Covered: <b class="text-slate-800" id="ws-label-${i}">${st.windscreen_covered ? 'RM ' + fmtMoney(st.windscreen_covered) : '—'}</b></span>`}
             </div>
             <div class="overflow-x-auto">
               <table class="w-full min-w-[620px]">
@@ -836,6 +837,14 @@ const MOTOR_SHELL_HTML = `
     refreshTotals(i);
   }
 
+  // Third Party options have no Sum Covered / Windscreen Covered.
+  // Those boxes are disabled when every option chosen for the operator is a Third Party option.
+  const THIRD_PARTY_CODES = ['TP', 'TPT'];
+  function noSumCovered(st) {
+    const chosen = COVERAGE_OPTIONS.filter(o => st.options[o.code].checked);
+    return chosen.length > 0 && chosen.every(o => THIRD_PARTY_CODES.includes(o.code));
+  }
+
   function optionTotal(st, code) {
     const o = st.options[code];
     return num(o.takaful_price) + num(o.road_tax) + num(st.admin_fee);
@@ -856,15 +865,16 @@ const MOTOR_SHELL_HTML = `
       const st = formState.operators[i];
       if (!st.checked) return;
       const chosen = COVERAGE_OPTIONS.filter(o => st.options[o.code].checked);
-      if (!(num(st.sum_covered) > 0)) errors.push(`${op.short}: enter the Sum Covered.`);
+      const noSum = noSumCovered(st);
+      if (!noSum && !(num(st.sum_covered) > 0)) errors.push(`${op.short}: enter the Sum Covered.`);
       if (!chosen.length) errors.push(`${op.short}: select at least one coverage option.`);
       chosen.forEach(o => {
         if (!(num(st.options[o.code].takaful_price) > 0)) errors.push(`${op.short}: enter the Takaful Price for "${o.name}".`);
       });
       quotes.push({
         operator: op.name,
-        sum_covered: round2(num(st.sum_covered)),
-        windscreen_covered: st.windscreen_covered === '' || st.windscreen_covered == null ? null : round2(num(st.windscreen_covered)),
+        sum_covered: noSum ? null : round2(num(st.sum_covered)),
+        windscreen_covered: noSum || st.windscreen_covered === '' || st.windscreen_covered == null ? null : round2(num(st.windscreen_covered)),
         road_tax: round2(num(st.road_tax)),
         admin_fee: round2(num(st.admin_fee)),
         note: (st.note || '').trim(),

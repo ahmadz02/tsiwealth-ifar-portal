@@ -21,7 +21,10 @@
   .field:focus { outline:none; border-color:#212F6E; box-shadow:0 0 0 2px rgba(33,47,110,.18); }
   .field-label { display:block; font-size:.72rem; font-weight:600; color:#334155; margin-bottom:.3rem; }
   .money { text-align:right; font-variant-numeric: tabular-nums; }
-  input[type=number]::-webkit-inner-spin-button { opacity:.4; }
+  /* no up/down arrows on number boxes */
+  input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
+  input[type=number] { -moz-appearance:textfield; appearance:textfield; }
+  .field:disabled { background:#f1f5f9; color:#94a3b8; cursor:not-allowed; }
   .locked { opacity:.45; pointer-events:none; }
 </style>
 </head>
