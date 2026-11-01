@@ -141,7 +141,7 @@ const MOTOR_SHELL_HTML = `
             <div><label class="field-label">Vehicle Registration Number *</label><input id="in-reg-no" class="field uppercase" placeholder="e.g. AML3127"></div>
             <div><label class="field-label">Type of Vehicle *</label>
               <select id="in-vehicle-type" class="field" translate="no">
-                <option value="">Select type</option><option value="Sedan">Sedan</option><option value="SUV">SUV</option><option value="MPV">MPV</option><option value="Motorcycle">Motorcycle</option><option value="Pick Up">Pick Up</option><option value="Lorry">Lorry</option>
+                <option value="">Select type</option><option value="Sedan">Sedan</option><option value="SUV">SUV</option><option value="MPV">MPV</option><option value="Hatchback">Hatchback</option><option value="Motorcycle">Motorcycle</option><option value="Pick Up">Pick Up</option><option value="Lorry">Lorry</option>
               </select>
             </div>
             <div><label class="field-label">Vehicle Brand and Model *</label><input id="in-vehicle-model" class="field" placeholder="e.g. Toyota Corolla Cross 1.8V"></div>
@@ -222,7 +222,7 @@ const MOTOR_SHELL_HTML = `
     { code: 'COMP_SP_WS', name: 'Comprehensive + Special Perils + Windscreen' },
     { code: 'COMP_WS',    name: 'Comprehensive + Windscreen' },
     { code: 'TP',         name: 'Third Party' },
-    { code: 'TPT',        name: 'Third Party and Theft' }
+    { code: 'TPT',        name: 'Third Party, Fire & Theft (TPFT)' }
   ];
   const DEFAULT_ADMIN_FEE = 20;
   const DRAFT_KEY = `mtq-draft-${MOTOR.workspace.toLowerCase()}`;   // unsaved form → quotation page
@@ -743,6 +743,7 @@ const MOTOR_SHELL_HTML = `
 
       const chosen = COVERAGE_OPTIONS.filter(o => st.options[o.code].checked);
       const noSum = noSumCovered(st);
+      const noWs = noWindscreenCovered(st);
       const rows = chosen.map((o, n) => {
         const r = st.options[o.code];
         return `<tr class="border-t border-slate-100">
@@ -767,7 +768,7 @@ const MOTOR_SHELL_HTML = `
             <div><label class="field-label">Sum Covered (RM)${noSum ? '' : ' *'}</label>
               <input type="number" min="0" step="0.01" value="${noSum ? '' : escapeHtml(st.sum_covered)}" placeholder="${noSum ? 'Not applicable' : 'e.g. 94900'}" ${noSum ? 'disabled title="Not applicable for Third Party"' : ''} oninput="setOpField(${i},'sum_covered',this.value)" class="field money"></div>
             <div><label class="field-label">Windscreen Covered (RM)</label>
-              <input type="number" min="0" step="0.01" value="${noSum ? '' : escapeHtml(st.windscreen_covered)}" placeholder="${noSum ? 'Not applicable' : 'e.g. 3000'}" ${noSum ? 'disabled title="Not applicable for Third Party"' : ''} oninput="setOpField(${i},'windscreen_covered',this.value)" class="field money"></div>
+              <input type="number" min="0" step="0.01" value="${noWs ? '' : escapeHtml(st.windscreen_covered)}" placeholder="${noWs ? 'Not applicable' : 'e.g. 3000'}" ${noWs ? 'disabled title="Not applicable for Third Party / TPFT"' : ''} oninput="setOpField(${i},'windscreen_covered',this.value)" class="field money"></div>
             <div><label class="field-label">Road Tax Amount (RM)</label>
               <input type="number" min="0" step="0.01" value="${escapeHtml(st.road_tax)}" placeholder="e.g. 359.40" oninput="setOpField(${i},'road_tax',this.value)" class="field money"></div>
             <div><label class="field-label">Admin Amount (RM)</label>
@@ -781,8 +782,8 @@ const MOTOR_SHELL_HTML = `
           <div class="border border-slate-200 rounded-xl overflow-hidden">
             <div class="px-3 py-2 bg-slate-50 text-xs text-slate-600 flex flex-wrap gap-x-6 gap-y-1 border-b border-slate-200">
               <span>Takaful Operator: <b class="text-slate-800">${escapeHtml(op.name)}</b></span>
-              ${noSum ? '' : `<span>Sum Covered: <b class="text-slate-800" id="sc-label-${i}">${st.sum_covered ? 'RM ' + fmtMoney(st.sum_covered) : '—'}</b></span>
-              <span>Windscreen Covered: <b class="text-slate-800" id="ws-label-${i}">${st.windscreen_covered ? 'RM ' + fmtMoney(st.windscreen_covered) : '—'}</b></span>`}
+              ${noSum ? '' : `<span>Sum Covered: <b class="text-slate-800" id="sc-label-${i}">${st.sum_covered ? 'RM ' + fmtMoney(st.sum_covered) : '—'}</b></span>`}
+              ${noWs ? '' : `<span>Windscreen Covered: <b class="text-slate-800" id="ws-label-${i}">${st.windscreen_covered ? 'RM ' + fmtMoney(st.windscreen_covered) : '—'}</b></span>`}
             </div>
             <div class="overflow-x-auto">
               <table class="w-full min-w-[620px]">
@@ -837,13 +838,16 @@ const MOTOR_SHELL_HTML = `
     refreshTotals(i);
   }
 
-  // Third Party options have no Sum Covered / Windscreen Covered.
-  // Those boxes are disabled when every option chosen for the operator is a Third Party option.
-  const THIRD_PARTY_CODES = ['TP', 'TPT'];
-  function noSumCovered(st) {
+  // Third Party has no Sum Covered; Third Party and TPFT have no Windscreen Covered.
+  // Each box is disabled when every option chosen for the operator lacks that cover.
+  const NO_SUM_CODES = ['TP'];
+  const NO_WINDSCREEN_CODES = ['TP', 'TPT'];
+  function allChosenIn(st, codes) {
     const chosen = COVERAGE_OPTIONS.filter(o => st.options[o.code].checked);
-    return chosen.length > 0 && chosen.every(o => THIRD_PARTY_CODES.includes(o.code));
+    return chosen.length > 0 && chosen.every(o => codes.includes(o.code));
   }
+  function noSumCovered(st) { return allChosenIn(st, NO_SUM_CODES); }
+  function noWindscreenCovered(st) { return allChosenIn(st, NO_WINDSCREEN_CODES); }
 
   function optionTotal(st, code) {
     const o = st.options[code];
@@ -874,7 +878,7 @@ const MOTOR_SHELL_HTML = `
       quotes.push({
         operator: op.name,
         sum_covered: noSum ? null : round2(num(st.sum_covered)),
-        windscreen_covered: noSum || st.windscreen_covered === '' || st.windscreen_covered == null ? null : round2(num(st.windscreen_covered)),
+        windscreen_covered: noWindscreenCovered(st) || st.windscreen_covered === '' || st.windscreen_covered == null ? null : round2(num(st.windscreen_covered)),
         road_tax: round2(num(st.road_tax)),
         admin_fee: round2(num(st.admin_fee)),
         note: (st.note || '').trim(),
