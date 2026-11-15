@@ -224,6 +224,22 @@ const MOTOR_SHELL_HTML = `
     { code: 'TP',         name: 'Third Party' },
     { code: 'TPT',        name: 'Third Party, Fire & Theft (TPFT)' }
   ];
+  // Option 7: agent-typed coverage names, several per operator (codes CUSTOM_1, CUSTOM_2, ...)
+  const OTHERS_LABEL = 'Others - please specify';
+  function customList(st) { return st.customs || (st.customs = []); }
+  function addCustomEntry(st) {
+    st.customSeq = (st.customSeq || 0) + 1;
+    const code = 'CUSTOM_' + st.customSeq;
+    customList(st).push({ code, name: '' });
+    st.options[code] = { checked: true, takaful_price: '', road_tax: st.road_tax };
+    return code;
+  }
+  // Standard options that are ticked, followed by the custom ones (when "Others" is on)
+  function chosenOptions(st) {
+    const std = COVERAGE_OPTIONS.filter(o => st.options[o.code] && st.options[o.code].checked);
+    const custom = st.othersOn ? customList(st).map(c => ({ code: c.code, name: c.name, custom: true })) : [];
+    return std.concat(custom);
+  }
   const DEFAULT_ADMIN_FEE = 20;
   const DRAFT_KEY = `mtq-draft-${MOTOR.workspace.toLowerCase()}`;   // unsaved form → quotation page
   const RENEWAL_WINDOW_DAYS = 60;
@@ -588,7 +604,8 @@ const MOTOR_SHELL_HTML = `
     return {
       operators: OPERATORS.map(() => ({
         checked: false, sum_covered: '', windscreen_covered: '', road_tax: '', admin_fee: DEFAULT_ADMIN_FEE, note: '',
-        options: Object.fromEntries(COVERAGE_OPTIONS.map(o => [o.code, { checked: false, takaful_price: '', road_tax: '' }]))
+        options: Object.fromEntries(COVERAGE_OPTIONS.map(o => [o.code, { checked: false, takaful_price: '', road_tax: '' }])),
+        othersOn: false, customs: [], customSeq: 0
       }))
     };
   }
@@ -606,6 +623,13 @@ const MOTOR_SHELL_HTML = `
       op.admin_fee = q.admin_fee ?? DEFAULT_ADMIN_FEE;
       op.note = q.note || '';
       (q.options || []).forEach(o => {
+        if (String(o.code || '').startsWith('CUSTOM_')) {
+          const code = addCustomEntry(op);
+          op.othersOn = true;
+          customList(op)[customList(op).length - 1].name = o.name || '';
+          op.options[code] = { checked: true, takaful_price: o.takaful_price ?? '', road_tax: o.road_tax ?? op.road_tax };
+          return;
+        }
         if (!op.options[o.code]) return;
         op.options[o.code] = { checked: true, takaful_price: o.takaful_price ?? '', road_tax: o.road_tax ?? op.road_tax };
       });
@@ -739,16 +763,37 @@ const MOTOR_SHELL_HTML = `
           <span class="w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center shrink-0 ${on ? 'border-white' : 'border-slate-400'}">${on ? '<span class="w-1.5 h-1.5 rounded-full bg-white"></span>' : ''}</span>
           <span>${n + 1}. ${escapeHtml(o.name)}</span>
         </button>`;
-      }).join('');
+      }).join('') + (() => {
+        const on = !!st.othersOn;
+        return `<button type="button" onclick="toggleOthers(${i})"
+            class="flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-medium text-left transition-colors ${on ? 'border-brand-navy bg-brand-navy text-white' : 'border-slate-300 text-slate-700 hover:border-slate-400 bg-white'}">
+          <span class="w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center shrink-0 ${on ? 'border-white' : 'border-slate-400'}">${on ? '<span class="w-1.5 h-1.5 rounded-full bg-white"></span>' : ''}</span>
+          <span>${COVERAGE_OPTIONS.length + 1}. ${OTHERS_LABEL}</span>
+        </button>`;
+      })();
 
-      const chosen = COVERAGE_OPTIONS.filter(o => st.options[o.code].checked);
+      const customBox = st.othersOn ? `
+          <div class="mt-2 border border-dashed border-slate-300 rounded-xl p-3 space-y-2">
+            ${customList(st).map((c, k) => `
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-slate-400 w-8 shrink-0">7.${k + 1}</span>
+              <input value="${escapeHtml(c.name)}" placeholder="e.g. Comprehensive + Flood + Riot"
+                oninput="setCustomName(${i},'${c.code}',this.value)" class="field !py-1.5 !text-xs flex-1">
+              <button type="button" onclick="removeCustom(${i},'${c.code}')" title="Remove"
+                class="px-2 py-1 text-xs rounded-lg border border-slate-300 text-slate-500 hover:text-red-600 hover:border-red-300">✕</button>
+            </div>`).join('')}
+            <button type="button" onclick="addCustom(${i})"
+              class="text-xs font-semibold text-brand-navy hover:underline">+ Add another</button>
+          </div>` : '';
+
+      const chosen = chosenOptions(st);
       const noSum = noSumCovered(st);
       const noWs = noWindscreenCovered(st);
       const rows = chosen.map((o, n) => {
         const r = st.options[o.code];
         return `<tr class="border-t border-slate-100">
           <td class="px-3 py-2 text-xs text-slate-400">${n + 1}</td>
-          <td class="px-3 py-2 text-xs font-semibold text-slate-700">${escapeHtml(o.name)}</td>
+          <td class="px-3 py-2 text-xs font-semibold text-slate-700" id="optname-${i}-${o.code}">${o.custom ? (escapeHtml(o.name) || '<span class="text-slate-400 font-normal">(enter a name above)</span>') : escapeHtml(o.name)}</td>
           <td class="px-2 py-1.5"><input type="number" min="0" step="0.01" value="${escapeHtml(r.takaful_price)}" placeholder="0.00"
               oninput="setOptField(${i},'${o.code}','takaful_price',this.value)" class="field money !py-1.5 !text-xs w-28"></td>
           <td class="px-2 py-1.5"><input type="number" min="0" step="0.01" value="${escapeHtml(r.road_tax)}" placeholder="0.00" data-roadtax="${i}" data-code="${o.code}"
@@ -777,6 +822,7 @@ const MOTOR_SHELL_HTML = `
           <div>
             <p class="field-label">Coverage options (select one or more)</p>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">${pills}</div>
+            ${customBox}
           </div>
           ${chosen.length ? `
           <div class="border border-slate-200 rounded-xl overflow-hidden">
@@ -811,6 +857,30 @@ const MOTOR_SHELL_HTML = `
     renderPart2();
   }
 
+  function toggleOthers(i) {
+    const st = formState.operators[i];
+    st.othersOn = !st.othersOn;
+    if (st.othersOn && !customList(st).length) addCustomEntry(st);
+    renderPart2();
+  }
+  function addCustom(i) {
+    addCustomEntry(formState.operators[i]);
+    renderPart2();
+  }
+  function removeCustom(i, code) {
+    const st = formState.operators[i];
+    st.customs = customList(st).filter(c => c.code !== code);
+    delete st.options[code];
+    if (!st.customs.length) st.othersOn = false;
+    renderPart2();
+  }
+  function setCustomName(i, code, value) {
+    const c = customList(formState.operators[i]).find(x => x.code === code);
+    if (c) c.name = value;
+    const cell = document.getElementById(`optname-${i}-${code}`);
+    if (cell) cell.innerHTML = escapeHtml(value) || '<span class="text-slate-400 font-normal">(enter a name above)</span>';
+  }
+
   function setOpField(i, field, value) {
     const st = formState.operators[i];
     st[field] = value;
@@ -843,7 +913,7 @@ const MOTOR_SHELL_HTML = `
   const NO_SUM_CODES = ['TP'];
   const NO_WINDSCREEN_CODES = ['TP', 'TPT'];
   function allChosenIn(st, codes) {
-    const chosen = COVERAGE_OPTIONS.filter(o => st.options[o.code].checked);
+    const chosen = chosenOptions(st);
     return chosen.length > 0 && chosen.every(o => codes.includes(o.code));
   }
   function noSumCovered(st) { return allChosenIn(st, NO_SUM_CODES); }
@@ -856,7 +926,7 @@ const MOTOR_SHELL_HTML = `
 
   function refreshTotals(i) {
     const st = formState.operators[i];
-    COVERAGE_OPTIONS.forEach(o => {
+    chosenOptions(st).forEach(o => {
       const cell = document.getElementById(`total-${i}-${o.code}`);
       if (cell) cell.textContent = fmtMoney(optionTotal(st, o.code));
     });
@@ -868,11 +938,12 @@ const MOTOR_SHELL_HTML = `
     OPERATORS.forEach((op, i) => {
       const st = formState.operators[i];
       if (!st.checked) return;
-      const chosen = COVERAGE_OPTIONS.filter(o => st.options[o.code].checked);
+      const chosen = chosenOptions(st).map(o => o.custom ? { ...o, name: (o.name || '').trim() } : o);
       const noSum = noSumCovered(st);
       if (!noSum && !(num(st.sum_covered) > 0)) errors.push(`${op.short}: enter the Sum Covered.`);
       if (!chosen.length) errors.push(`${op.short}: select at least one coverage option.`);
       chosen.forEach(o => {
+        if (o.custom && !o.name) { errors.push(`${op.short}: type a name for each "${OTHERS_LABEL}" option.`); return; }
         if (!(num(st.options[o.code].takaful_price) > 0)) errors.push(`${op.short}: enter the Takaful Price for "${o.name}".`);
       });
       quotes.push({
