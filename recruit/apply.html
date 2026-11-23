@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSI Wealth Planners - IFAR Application</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../supabase-config.js"></script>
+<script src="ifar-shared.js"></script>
+<style>
+  body { font-family: 'Inter', sans-serif; }
+  .brand-navy { color:#212F6E; }
+  .bg-brand-navy { background-color:#212F6E; }
+  .bg-brand-gold { background-color:#FFCB08; }
+  .sig-canvas { touch-action:none; cursor:crosshair; }
+  .lbl { display:block; font-size:11px; font-weight:600; text-transform:uppercase; color:#334155; margin-bottom:4px; }
+  .inp { width:100%; padding:10px 12px; border:1px solid #cbd5e1; border-radius:12px; font-size:14px; background:#fff; }
+  .inp:focus { outline:none; border-color:#212F6E; box-shadow:0 0 0 2px rgba(33,47,110,.18); }
+  .inp.bad { border-color:#e11d48; background:#fff1f2; }
+  .opt { display:inline-flex; align-items:center; gap:6px; font-size:14px; margin-right:14px; padding:4px 0; }
+  .flagged { border:2px solid #f59e0b !important; background:#fffbeb; }
+  .card-sec { border:1px solid #e2e8f0; border-radius:16px; padding:18px; background:#fff; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+<header class="bg-brand-navy text-white shadow-md">
+  <div class="max-w-3xl mx-auto px-4 sm:px-6 h-16 flex items-center gap-3">
+    <div class="bg-white/10 p-2 rounded-lg text-yellow-300"><i class="fa-solid fa-user-plus text-xl"></i></div>
+    <div>
+      <h1 class="font-bold text-lg leading-none">TSI Wealth Planners</h1>
+      <span class="text-xs text-slate-300">Islamic Financial Adviser Representative Application</span>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-3xl mx-auto px-4 sm:px-6 py-6">
+  <div id="page-state" class="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 text-center">
+    <i class="fa-solid fa-circle-notch fa-spin text-2xl brand-navy"></i>
+    <p class="text-sm text-slate-500 mt-3">Loading your application...</p>
+  </div>
+
+  <div id="app-shell" class="hidden space-y-4">
+    <div id="return-banner" class="hidden"></div>
+
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+      <div class="flex items-center justify-between gap-2">
+        <div>
+          <p class="text-[11px] font-bold tracking-widest uppercase text-amber-600">Application <span id="ref-no" class="font-mono"></span></p>
+          <p class="text-xs text-slate-500" id="recruiter-line"></p>
+        </div>
+        <div class="text-right">
+          <p id="save-state" class="text-[11px] text-slate-400"></p>
+          <button type="button" onclick="saveDraft(true)" class="mt-1 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 hover:bg-slate-50"><i class="fa-regular fa-floppy-disk mr-1"></i>Save draft</button>
+        </div>
+      </div>
+      <div class="mt-4 flex gap-1" id="stepper"></div>
+      <p id="step-title" class="mt-2 text-sm font-bold text-slate-800"></p>
+    </div>
+
+    <div id="error-summary" class="hidden bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl p-4 text-sm"></div>
+
+    <div id="step-body" class="space-y-4"></div>
+
+    <div class="flex justify-between items-center pt-2 pb-10">
+      <button type="button" id="btn-back" onclick="goStep(step-1)" class="px-5 py-2.5 rounded-xl border border-slate-300 text-sm font-medium hover:bg-white">Back</button>
+      <button type="button" id="btn-next" onclick="goStep(step+1)" class="px-6 py-2.5 rounded-xl bg-brand-navy text-white text-sm font-semibold shadow-sm">Next</button>
+    </div>
+  </div>
+</main>
+<div id="toast-container" class="fixed top-4 right-4 z-50 max-w-sm space-y-2"></div>
+
+<script>
+const token = new URLSearchParams(window.location.search).get('token');
+const STEPS = ['Applicant particulars', 'Family details', 'Employment & education', 'Bank account & references', 'Documents', 'Declaration & signature'];
+const MAX_PDF_BYTES = 8 * 1024 * 1024;
+const MAX_IMG_SIDE = 1600, IMG_QUALITY = 0.72;
+
+let app = null;          // response of get_ifar_application_by_token
+let fd = {};             // form data
+let files = {};          // {slot:[{path,name,type,size}]}
+let sigData = null;      // saved signature data URL
+let step = 0;
+let errors = {};
+let dirty = false, saving = false, saveTimer = null;
+let sigCanvas = null, sigCtx = null, drawing = false;
+const busySlots = {};
+let flags = [];
+
+window.addEventListener('DOMContentLoaded', load);
+
+// ---------------------------------------------------------------- loading
+async function load() {
+  if (!token) return fatal('Invalid link', 'The secure token is missing from this link.');
+  const { data, error } = await supabaseClient.rpc('get_ifar_application_by_token', { p_token: token });
+  if (error) return fatal('Unable to open application', error.message || 'The link is invalid or the service is unavailable.');
+  app = data;
+  if (app.expired) return fatal('This link has expired', `The invitation link for ${app.reference_no} is no longer valid. Please ask ${app.recruiter_name || 'your recruiter'} to extend it.`);
+  if (app.locked) return locked();
+
+  fd = app.form_data || {};
+  files = app.files || {};
+  sigData = app.applicant_signature || null;
+  flags = Array.isArray(app.return_flags) ? app.return_flags : [];
+  fd.email = app.candidate_email;
+  if (!fd.name && app.candidate_name) fd.name = app.candidate_name;
+  if (!Array.isArray(fd.employment) || !fd.employment.length) fd.employment = [{ company: '', position: '', start: '', end: '', present: false, period: '' }];
+  if (!Array.isArray(fd.education) || !fd.education.length) fd.education = [{ institution: '', qualification: '', year: '' }];
+  if (!Array.isArray(fd.references) || !fd.references.length) {
+    fd.references = [{ name: '', designation: '', phone: '' }, { name: '', designation: '', phone: '' }];
+  }
+  if (!fd.nok) fd.nok = {};
+  if (!fd.bank) fd.bank = {};
+  if (!fd.principals) fd.principals = {};
+
+  document.getElementById('page-state').classList.add('hidden');
+  document.getElementById('app-shell').classList.remove('hidden');
+  document.getElementById('ref-no').textContent = app.reference_no;
+  document.getElementById('recruiter-line').textContent = app.recruiter_name ? `Invited by ${app.recruiter_name} · link valid until ${ifarFmtDate(app.expires_at)}` : '';
+  if (app.last_saved_at) setSaveState('Draft restored · last saved ' + ifarFmtDate(app.last_saved_at, true));
+
+  if (app.status === 'RETURNED' && app.return_reason) {
+    const b = document.getElementById('return-banner');
+    b.classList.remove('hidden');
+    b.innerHTML = `<div class="bg-amber-50 border border-amber-300 rounded-2xl p-4">
+      <p class="text-sm font-bold text-amber-800"><i class="fa-solid fa-rotate-left mr-1"></i> Corrections needed${app.returned_by_role === 'AD' ? ' (from AD)' : ''}</p>
+      <p class="text-sm text-amber-900 mt-1 whitespace-pre-line">${ifarEsc(app.return_reason)}</p>
+      ${flags.length ? `<p class="text-xs text-amber-800 mt-2">Sections to review: ${flags.map(f => ifarEsc(IFAR_FLAG_SECTIONS[f] || f)).join(', ')}</p>` : ''}
+    </div>`;
+  }
+  wireEvents();
+  renderStep();
+  document.addEventListener('visibilitychange', () => { if (document.hidden && dirty) saveDraft(false); });
+}
+
+function fatal(title, message) {
+  const el = document.getElementById('page-state');
+  el.classList.remove('hidden');
+  document.getElementById('app-shell').classList.add('hidden');
+  el.innerHTML = `<div class="w-12 h-12 mx-auto rounded-full bg-rose-50 text-rose-500 flex items-center justify-center"><i class="fa-solid fa-link-slash"></i></div>
+    <h2 class="text-lg font-bold text-slate-800 mt-4">${ifarEsc(title)}</h2><p class="text-sm text-slate-500 mt-1">${ifarEsc(message)}</p>`;
+}
+
+function locked() {
+  const el = document.getElementById('page-state');
+  el.innerHTML = `<div class="w-12 h-12 mx-auto rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center"><i class="fa-solid fa-circle-check text-xl"></i></div>
+    <h2 class="text-lg font-bold text-slate-800 mt-4">Application submitted</h2>
+    <p class="text-sm text-slate-500 mt-1">Reference <span class="font-mono">${ifarEsc(app.reference_no)}</span> was submitted ${ifarFmtDate(app.submitted_at, true)} and is being reviewed by ${ifarEsc(app.recruiter_name || 'your recruiter')}.</p>
+    <p class="text-xs text-slate-400 mt-3">If corrections are needed you will receive an email with this same link.</p>`;
+}
+
+// ---------------------------------------------------------------- data helpers
+function getP(path) { return path.split('.').reduce((o, k) => (o == null ? o : o[k]), fd); }
+function setP(path, val) {
+  const ks = path.split('.'); let o = fd;
+  ks.slice(0, -1).forEach(k => { if (o[k] == null || typeof o[k] !== 'object') o[k] = {}; o = o[k]; });
+  o[ks[ks.length - 1]] = val;
+}
+const E = ifarEsc;
+const errMsg = k => errors[k] ? `<p class="text-[11px] text-rose-600 mt-1">${E(errors[k])}</p>` : '';
+
+function tInput(k, label, o = {}) {
+  const { type = 'text', ph = '', ro = false, span = '', hint = '', req = true } = o;
+  return `<div class="${span}"><label class="lbl">${label}${req ? ' <span class="text-rose-500">*</span>' : ''}</label>
+    <input data-k="${k}" type="${type}" value="${E(getP(k) ?? '')}" placeholder="${E(ph)}" ${ro ? 'readonly' : ''} class="inp ${errors[k] ? 'bad' : ''} ${ro ? 'bg-slate-100 text-slate-500' : ''}">
+    ${hint ? `<p class="text-[11px] text-slate-400 mt-1">${hint}</p>` : ''}${errMsg(k)}</div>`;
+}
+function tArea(k, label, o = {}) {
+  const { rows = 2, span = '', hint = '' } = o;
+  return `<div class="${span}"><label class="lbl">${label} <span class="text-rose-500">*</span></label>
+    <textarea data-k="${k}" rows="${rows}" class="inp ${errors[k] ? 'bad' : ''}">${E(getP(k) ?? '')}</textarea>
+    ${hint ? `<p class="text-[11px] text-slate-400 mt-1">${hint}</p>` : ''}${errMsg(k)}</div>`;
+}
+function radios(k, label, options, o = {}) {
+  const { span = '', rr = true } = o;
+  return `<div class="${span}"><label class="lbl">${label} <span class="text-rose-500">*</span></label>
+    <div class="${errors[k] ? 'rounded-xl border border-rose-400 bg-rose-50 px-2' : ''}">
+    ${options.map(opt => `<label class="opt"><input type="radio" name="r_${k}" data-k="${k}" value="${E(opt)}" ${getP(k) === opt ? 'checked' : ''} ${rr ? 'data-rr' : ''}> ${E(opt)}</label>`).join('')}
+    </div>${errMsg(k)}</div>`;
+}
+function tCheck(k, label, o = {}) {
+  return `<label class="opt ${o.span || ''}"><input type="checkbox" data-k="${k}" ${getP(k) ? 'checked' : ''} ${o.rr ? 'data-rr' : ''}> ${label}</label>`;
+}
+function isFlagged(f) { return flags.includes(f); }
+function secOpen(flag, title) {
+  return `<div class="card-sec ${flag && isFlagged(flag) ? 'flagged' : ''}">
+    ${flag && isFlagged(flag) ? '<p class="text-xs font-bold text-amber-700 mb-2"><i class="fa-solid fa-flag mr-1"></i>Please review this section</p>' : ''}
+    ${title ? `<h3 class="text-sm font-bold text-slate-800 mb-3">${title}</h3>` : ''}`;
+}
+
+// ---------------------------------------------------------------- events
+function wireEvents() {
+  const body = document.getElementById('step-body');
+  body.addEventListener('input', e => {
+    const t = e.target, k = t.dataset.k;
+    if (!k || t.type === 'radio' || t.type === 'checkbox') return;
+    setP(k, t.value); afterSet(k); clearErr(k, t); markDirty();
+  });
+  body.addEventListener('change', e => {
+    const t = e.target, k = t.dataset.k;
+    if (t.dataset.emp) { empChange(t); return; }
+    if (!k) return;
+    if (t.type === 'radio') { if (t.checked) setP(k, t.value); }
+    else if (t.type === 'checkbox') setP(k, t.checked);
+    else setP(k, t.value);
+    afterSet(k);
+    clearErr(k, t); markDirty();
+    if (t.dataset.rr !== undefined) { const y = window.scrollY; renderStep(); window.scrollTo(0, y); }
+  });
+  body.addEventListener('click', e => {
+    const b = e.target.closest('[data-act]');
+    if (!b) return;
+    const act = b.dataset.act;
+    if (act === 'add') { addRow(b.dataset.list); }
+    else if (act === 'del') { delRow(b.dataset.list, parseInt(b.dataset.idx, 10)); }
+    else if (act === 'rmfile') { removeFile(b.dataset.slot, b.dataset.path); }
+    else if (act === 'clearsig') { sigData = null; renderStep(); markDirty(); }
+  });
+  body.addEventListener('change', e => {
+    const t = e.target;
+    if (t.matches && t.matches('input[type=file][data-slot]')) { handleFiles(t.dataset.slot, t.files); t.value = ''; }
+  });
+}
+// Employment: keep the combined "Start - End" text in step with the month pickers
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function fmtMonth(v) { const m = /^(\d{4})-(\d{2})$/.exec(String(v || '')); return m ? `${MONTHS[parseInt(m[2], 10) - 1] || m[2]} ${m[1]}` : ''; }
+function empPeriod(r) { const a = fmtMonth(r.start), b = r.present ? 'Current' : fmtMonth(r.end); return a || b ? `${a || '?'} - ${b || '?'}` : ''; }
+function afterSet(k) {
+  const m = /^employment\.(\d+)\.(start|end|present)$/.exec(k);
+  if (m) { const r = fd.employment[+m[1]]; if (r.present) r.end = ''; r.period = empPeriod(r); }
+}
+// Month + year selectors (End also offers "Current")
+function empChange(t) {
+  const [i, field] = t.dataset.emp.split('|'); const r = fd.employment[+i];
+  const pre = field === 'start' ? 's' : 'e';
+  r[pre + (t.dataset.part === 'm' ? 'M' : 'Y')] = t.value;
+  const wasCurrent = !!r.present;
+  if (field === 'end') { r.present = r.eM === 'current'; if (r.present) r.end = ''; }
+  if (!(field === 'end' && r.present)) { const m = r[pre + 'M'], y = r[pre + 'Y']; r[field] = m && y && m !== 'current' ? `${y}-${m}` : ''; }
+  r.period = empPeriod(r);
+  delete errors[`employment.${i}.${field}`];
+  markDirty();
+  if (field === 'end' && wasCurrent !== r.present) { const sy = window.scrollY; renderStep(); window.scrollTo(0, sy); }
+}
+function clearErr(k, el) {
+  if (errors[k]) { delete errors[k]; if (el && el.classList) el.classList.remove('bad'); }
+}
+function markDirty() { dirty = true; setSaveState('Unsaved changes…'); clearTimeout(saveTimer); saveTimer = setTimeout(() => saveDraft(false), 1800); }
+function setSaveState(t) { document.getElementById('save-state').textContent = t; }
+
+function addRow(list) {
+  const blank = { employment: { company: '', position: '', start: '', end: '', present: false, period: '' }, education: { institution: '', qualification: '', year: '' }, references: { name: '', designation: '', phone: '' } }[list];
+  fd[list].push({ ...blank }); markDirty(); renderStep();
+}
+function delRow(list, i) {
+  if (list !== 'references' && fd[list].length <= 1) return toast('At least one row is required.', 'error');
+  fd[list].splice(i, 1); markDirty(); renderStep();
+}
+
+// ---------------------------------------------------------------- stepper / render
+function goStep(n) {
+  if (n < 0 || n >= STEPS.length) return;
+  syncDerived();
+  if (dirty) saveDraft(false);
+  step = n; renderStep(); window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function renderStep() {
+  document.getElementById('stepper').innerHTML = STEPS.map((s, i) =>
+    `<button type="button" onclick="goStep(${i})" title="${E(s)}" class="flex-1 h-2 rounded-full ${i === step ? 'bg-brand-navy' : (i < step ? 'bg-emerald-400' : 'bg-slate-200')}"></button>`).join('');
+  document.getElementById('step-title').textContent = `Step ${step + 1} of ${STEPS.length} · ${STEPS[step]}`;
+  document.getElementById('btn-back').style.visibility = step === 0 ? 'hidden' : 'visible';
+  const next = document.getElementById('btn-next');
+  next.style.display = step === STEPS.length - 1 ? 'none' : '';
+  document.getElementById('step-body').innerHTML = [stepParticulars, stepFamily, stepEmpEdu, stepBank, stepDocs, stepDeclaration][step]();
+  if (step === STEPS.length - 1) initSigCanvas();
+  const sum = document.getElementById('error-summary');
+  const msgs = Object.keys(errors);
+  if (msgs.length && errorsShown) {
+    sum.classList.remove('hidden');
+    sum.innerHTML = `<p class="font-semibold mb-1"><i class="fa-solid fa-circle-exclamation mr-1"></i>Please complete the following before submitting:</p><ul class="list-disc ml-5 space-y-0.5">${msgs.slice(0, 12).map(k => `<li><a href="#" onclick="jumpTo('${k}');return false" class="underline">${E(errors[k])}</a></li>`).join('')}${msgs.length > 12 ? `<li>…and ${msgs.length - 12} more</li>` : ''}</ul>`;
+  } else sum.classList.add('hidden');
+}
+let errorsShown = false;
+function jumpTo(k) { step = stepOfKey(k); renderStep(); window.scrollTo({ top: 0 }); }
+
+// ---------------------------------------------------------------- steps
+function stepParticulars() {
+  const f = fd;
+  return `${secOpen('particulars', 'Applicant particulars')}
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      ${radios('title', 'Title', ['Encik', 'Puan', 'Cik', 'Mr', 'Mrs', 'Ms', 'Others'], { span: 'sm:col-span-3' })}
+      ${f.title === 'Others' ? tInput('titleOther', 'Title (specify)') : ''}
+      ${tInput('name', 'Name as in NRIC', { span: 'sm:col-span-3' })}
+      ${tInput('nric', 'NRIC / Passport No.', { span: 'sm:col-span-1', ph: '791126-01-5747' })}
+      ${tInput('mobile', 'Mobile Phone No.', { span: 'sm:col-span-1', ph: '012-3456789', type: 'tel' })}
+      ${tInput('email', 'Email Address', { span: 'sm:col-span-1', ro: true })}
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
+      <div>${radios('nationality', 'Nationality', ['Malaysian', 'Singaporean', 'Others'])}${f.nationality === 'Others' ? tInput('nationalityOther', 'Specify') : ''}</div>
+      <div>${radios('race', 'Race', ['Malay', 'Chinese', 'Indian', 'Others'])}${f.race === 'Others' ? tInput('raceOther', 'Specify') : ''}</div>
+      <div>${radios('religion', 'Religion', ['Islam', 'Hindu', 'Buddhist', 'Christian', 'Others'])}${f.religion === 'Others' ? tInput('religionOther', 'Specify') : ''}</div>
+    </div>
+    <div class="mt-4">${radios('marital', 'Marital Status', ['Single', 'Married', 'Divorced', 'Separated', 'Widowed'])}</div>
+    <div class="grid grid-cols-1 gap-4 mt-4">
+      ${tArea('corrAddress', 'Correspondence Address')}
+      ${tCheck('permSame', 'Permanent address is the same as correspondence address', { rr: true })}
+      ${f.permSame ? '' : tArea('permAddress', 'Permanent Address')}
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
+      ${tInput('occupation', 'Occupation')}
+      ${tInput('officeAddress', 'Office Address', { hint: 'Enter N/A if not applicable' })}
+      ${tInput('officePhone', 'Office Phone No.', { hint: 'Enter N/A if not applicable' })}
+    </div>
+    <div class="mt-4">${tInput('membershipNo', 'MFPC / IBFIM / FPAM Membership No.', { hint: 'Enter N/A if not applicable' })}</div>
+    <div class="mt-4">
+      ${radios('existingAgent', 'Are you an existing insurance / Takaful agent or currently approved IFAR/FAR with another IFA/FA company?', ['Yes', 'No'])}
+      ${f.existingAgent === 'Yes' ? `<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+        <p class="sm:col-span-2 text-xs text-slate-500">Name of principal companies (at least one)</p>
+        ${tInput('principals.life', 'Life Insurance Company', { req: false })}${tInput('principals.general', 'General Insurance Company(ies)', { req: false })}
+        ${tInput('principals.takaful', 'Takaful Operator', { req: false })}${tInput('principals.ifa', 'IFA/FA Company', { req: false })}
+        ${errors.principals ? `<p class="sm:col-span-2 text-[11px] text-rose-600">${E(errors.principals)}</p>` : ''}</div>` : ''}
+    </div></div>`;
+}
+
+function stepFamily() {
+  const f = fd;
+  return `${secOpen('family', 'Next of kin')}
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      ${tInput('nok.name', 'Name')}${tInput('nok.relationship', 'Relationship')}${tInput('nok.contact', 'Contact No.', { type: 'tel' })}
+    </div>
+    <div class="mt-4 space-y-2">
+      ${tCheck('nok.sameAsCorr', 'Next of kin address is the same as my correspondence address', { rr: true })}
+      ${f.nok && f.nok.sameAsCorr ? '' : tArea('nok.address', 'Address')}
+    </div></div>
+    ${secOpen('family', 'Spouse')}
+      ${f.marital === 'Married' ? `
+        ${radios('spouseRep', 'Is your spouse at present representing this Company or any other Takaful Operator as a Tied Agent, or IFAR/FAR at any other IFA/FA Company?', ['Yes', 'No'])}
+        ${f.spouseRep === 'Yes' ? `<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-3">
+          ${tInput('spouseCode', 'Takaful Agent/FAR Code No.', { hint: 'Enter N/A if not known' })}${tInput('spouseCompany', 'Name of company')}${tInput('spousePosition', 'Position')}</div>` : ''}`
+      : `<p class="text-sm text-slate-500">Not applicable – your marital status is ${E(f.marital || 'not selected')}. (Change it in step 1 if this is wrong.)</p>`}
+    </div>`;
+}
+
+function listRows(list, cols, labels, req = true) {
+  return fd[list].map((r, i) => `<div class="grid grid-cols-1 sm:grid-cols-[1fr_1fr_130px_32px] gap-2 items-start mb-2 p-2 bg-slate-50 rounded-xl border border-slate-200">
+    ${cols.map((c, j) => tInput(`${list}.${i}.${c}`, labels[j], { req })).join('')}
+    <button type="button" data-act="del" data-list="${list}" data-idx="${i}" class="mt-5 text-rose-500 hover:bg-rose-50 rounded-lg h-9" title="Remove"><i class="fa-solid fa-trash"></i></button></div>`).join('');
+}
+function empSelect(i, field, r) {
+  const pre = field === 'start' ? 's' : 'e', cur = field === 'end';
+  const v = field === 'start' ? r.start : r.end;
+  const mVal = r[pre + 'M'] != null ? r[pre + 'M'] : (cur && r.present ? 'current' : (v ? String(v).slice(5, 7) : ''));
+  const yVal = r[pre + 'Y'] != null ? r[pre + 'Y'] : (v ? String(v).slice(0, 4) : '');
+  const isCur = cur && (r.present || mVal === 'current');
+  const bad = errors[`employment.${i}.${field}`] ? 'bad' : '';
+  const y0 = new Date().getFullYear();
+  const years = []; for (let y = y0; y >= 1960; y--) years.push(y);
+  return `<div><label class="lbl">${cur ? 'End' : 'Start'} <span class="text-rose-500">*</span></label>
+    <div class="grid grid-cols-2 gap-2">
+      <select data-emp="${i}|${field}" data-part="m" class="inp ${bad}">
+        <option value="">Month</option>${cur ? `<option value="current" ${isCur ? 'selected' : ''}>Current</option>` : ''}
+        ${MONTHS.map((n, j) => { const mv = String(j + 1).padStart(2, '0'); return `<option value="${mv}" ${!isCur && mVal === mv ? 'selected' : ''}>${n}</option>`; }).join('')}
+      </select>
+      <select data-emp="${i}|${field}" data-part="y" class="inp ${bad}" ${isCur ? 'disabled' : ''}>
+        <option value="">Year</option>${years.map(y => `<option value="${y}" ${!isCur && String(yVal) === String(y) ? 'selected' : ''}>${y}</option>`).join('')}
+      </select>
+    </div>${errMsg(`employment.${i}.${field}`)}</div>`;
+}
+function empRows() {
+  return fd.employment.map((r, i) => `<div class="mb-2 p-2 bg-slate-50 rounded-xl border border-slate-200">
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+      ${tInput(`employment.${i}.company`, 'Company / Address')}
+      ${tInput(`employment.${i}.position`, 'Position held')}
+      ${empSelect(i, 'start', r)}
+      ${empSelect(i, 'end', r)}
+    </div>
+    <div class="text-right"><button type="button" data-act="del" data-list="employment" data-idx="${i}" class="text-rose-500 hover:bg-rose-50 rounded-lg px-3 py-1 text-xs"><i class="fa-solid fa-trash mr-1"></i>Remove</button></div></div>`).join('');
+}
+function stepEmpEdu() {
+  return `${secOpen('employment_education', 'Employment history')}
+      <p class="text-xs text-slate-500 mb-2">Most recent first. At least one entry. Choose the month and year you started and ended. For your current job, choose "Current" as the End month.</p>
+      ${errors.employment ? `<p class="text-[11px] text-rose-600 mb-1">${E(errors.employment)}</p>` : ''}
+      ${empRows()}
+      <button type="button" data-act="add" data-list="employment" class="text-xs font-semibold brand-navy"><i class="fa-solid fa-plus mr-1"></i>Add another</button></div>
+    ${secOpen('employment_education', 'Education background')}
+      <p class="text-xs text-slate-500 mb-2">At least one entry.</p>
+      ${errors.education ? `<p class="text-[11px] text-rose-600 mb-1">${E(errors.education)}</p>` : ''}
+      ${listRows('education', ['institution', 'qualification', 'year'], ['Name of institution', 'Academic qualification', 'Year'])}
+      <button type="button" data-act="add" data-list="education" class="text-xs font-semibold brand-navy"><i class="fa-solid fa-plus mr-1"></i>Add another</button></div>`;
+}
+
+function stepBank() {
+  return `${secOpen('bank_references', 'Bank account information (for payment of fees / commissions)')}
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        ${tInput('bank.name', 'Bank Name')}${tInput('bank.accountNo', 'Bank Account Number')}
+        ${tInput('bank.branch', 'Branch')}${tInput('bank.taxNo', 'Income Tax Number', { req: false, hint: 'Optional' })}
+      </div></div>
+    ${secOpen('bank_references', 'References (Please provide at least 2 references)')}
+      <p class="text-xs text-slate-500 mb-2">Optional. If you add a reference, please complete all three fields of that row.</p>
+      ${errors.references ? `<p class="text-[11px] text-rose-600 mb-1">${E(errors.references)}</p>` : ''}
+      ${listRows('references', ['name', 'designation', 'phone'], ['Name', 'Designation', 'Telephone No.'], false)}
+      <button type="button" data-act="add" data-list="references" class="text-xs font-semibold brand-navy"><i class="fa-solid fa-plus mr-1"></i>Add another</button></div>`;
+}
+
+function slotCard(s) {
+  {
+    const list = files[s.key] || [];
+    const busy = busySlots[s.key];
+    const hasErr = errors['files.' + s.key];
+    const canAdd = s.multi || list.length === 0;
+    return `<div class="card-sec ${isFlagged(s.flag) ? 'flagged' : ''} ${hasErr ? '!border-rose-400' : ''}">
+      ${isFlagged(s.flag) ? '<p class="text-xs font-bold text-amber-700 mb-1"><i class="fa-solid fa-flag mr-1"></i>Please review this document</p>' : ''}
+      <p class="text-[11px] font-semibold text-slate-400 uppercase">${s.item ? 'Checklist item ' + s.item : 'Payment'}</p>
+      <p class="text-sm font-semibold text-slate-800">${E(s.label)} <span class="text-rose-500">*</span></p>
+      ${s.hint ? `<p class="text-xs text-slate-600 mt-1">${E(s.hint)}</p>` : ''}
+      ${s.item === 2 || s.item === 3 ? '<p class="text-[11px] text-slate-500">Copies of IC and certificates must be certified by a Commissioner for Oaths or a lawyer.</p>' : ''}
+      <div class="mt-3 space-y-2">
+        ${list.map(f => `<div class="flex items-center justify-between gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+          <span class="text-sm break-all"><i class="fa-regular ${f.type === 'application/pdf' ? 'fa-file-pdf text-rose-500' : 'fa-file-image text-sky-600'} mr-2"></i>${E(f.name)} <span class="text-[11px] text-slate-400">${Math.round((f.size || 0) / 1024)} KB</span></span>
+          <button type="button" data-act="rmfile" data-slot="${s.key}" data-path="${E(f.path)}" class="text-rose-500 text-xs font-semibold shrink-0">Remove</button></div>`).join('')}
+        ${busy ? `<p class="text-xs text-slate-500"><i class="fa-solid fa-circle-notch fa-spin mr-1"></i>${E(busy)}</p>` : ''}
+        ${canAdd && !busy ? `<label class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border-2 border-dashed border-slate-300 text-sm font-medium text-slate-600 hover:bg-slate-50 cursor-pointer">
+          <i class="fa-solid fa-upload"></i> ${list.length ? 'Add another file' : 'Choose file'}
+          <input type="file" data-slot="${s.key}" accept="image/*,application/pdf" ${s.multi ? 'multiple' : ''} class="hidden"></label>
+          <p class="text-[11px] text-slate-400">JPG, PNG or PDF (max 8 MB per PDF). Photos are compressed automatically.</p>` : ''}
+        ${hasErr ? `<p class="text-[11px] text-rose-600">${E(hasErr)}</p>` : ''}
+      </div></div>`;
+  }
+}
+function stepDocs() {
+  const slots = IFAR_FILE_SLOTS.filter(s => s.step === 'docs').map(slotCard).join('');
+  return `<div class="bg-sky-50 border border-sky-200 rounded-2xl p-4 text-xs text-sky-900 leading-relaxed">
+      <p class="font-semibold mb-1">Upload the following documents</p>
+      Please scan or photograph each document clearly (all four corners visible, text readable).
+    </div>${slots}
+    <div class="bg-slate-100 rounded-2xl p-4 text-xs text-slate-600 leading-relaxed">
+      <p class="font-semibold mb-1">To be submitted separately (not required online)</p>
+      Two passport-sized photographs · copy of authorization / Insurance Authority / FIMM card (if any) · proof of valid FPAM / MFPC membership · BNM JKAP form · IFAR Agreement (signed in duplicate) · CCRIS report.
+      Please hand these to your recruiter.
+    </div>`;
+}
+
+function stepDeclaration() {
+  return `${secOpen(null, 'Payment')}
+      <p class="text-sm text-slate-700">IFAR License Application fee <strong>RM 200</strong> <span class="text-xs text-slate-500">(inclusive of complimentary 1 box of business card)</span></p>
+      <ul class="text-xs text-slate-500 mt-2 list-disc ml-5 space-y-0.5">
+        <li>Cheques must be crossed and made payable to TSI Wealth Planners Sdn Bhd; or</li>
+        <li>Bank-in via Maybank Account No: 564481-414075 (upload the bank-in slip below).</li>
+      </ul>
+      <div class="mt-3">${slotCard(IFAR_FILE_SLOTS.find(x => x.key === 'payment_proof'))}</div></div>
+    ${secOpen('signature', 'Declaration')}
+      <div class="text-xs text-slate-600 leading-relaxed space-y-2">
+        <p>I hereby confirm my interest to appointed an Islamic Financial Adviser Representative of TSI Wealth Planners Sdn Bhd (TSIWP) and hereby declare that to the best of my knowledge and belief, the particulars given above are true.</p>
+        <p>I fully understand that any misrepresentation herein by me could result in disciplinary action, including termination from the Company.</p>
+        <p>I also hereby authorise TSIWP to obtain any information it requires including but not limited to Credit Information from RAM Credit Information Sdn Bhd (RAMCI) and/or any relevant sources or person to process my application and agree to hold TSIWP free and harmless from any liability whatsoever arising therefrom.</p>
+        <p>I further agree to abide by the rules and regulations set by TSIWP and understand that the rules and regulations may change from time to time at the discretion of TSIWP notice of which will be forwarded to me.</p>
+      </div>
+      <label class="opt mt-3 ${errors.agree ? 'text-rose-600' : ''}"><input type="checkbox" data-k="agree" ${fd.agree ? 'checked' : ''}> I have read and agree to the declaration above. <span class="text-rose-500">*</span></label>
+      ${errors.agree ? `<p class="text-[11px] text-rose-600">${E(errors.agree)}</p>` : ''}
+      <p class="lbl mt-4">Signature of applicant <span class="text-rose-500">*</span></p>
+      ${sigData ? `<div class="border border-slate-300 rounded-xl p-2 bg-white"><img src="${sigData}" class="h-24" alt="Signature"></div>
+          <button type="button" data-act="clearsig" class="mt-2 text-xs text-slate-500 hover:text-rose-600 font-medium"><i class="fa-solid fa-eraser mr-1"></i>Clear &amp; re-sign</button>`
+        : `<div class="bg-white border-2 border-dashed ${errors.signature ? 'border-rose-400' : 'border-slate-300'} rounded-xl relative">
+            <canvas id="sig-canvas" class="sig-canvas w-full" style="height:120px"></canvas>
+            <span id="sig-placeholder" class="absolute inset-0 flex items-center justify-center text-slate-300 text-xs pointer-events-none">Sign here with your finger or mouse</span></div>
+          <button type="button" onclick="clearSigCanvas()" class="mt-2 text-xs text-slate-500 hover:text-rose-600 font-medium"><i class="fa-solid fa-eraser mr-1"></i>Clear</button>`}
+      ${errors.signature ? `<p class="text-[11px] text-rose-600 mt-1">${E(errors.signature)}</p>` : ''}
+      <p class="text-xs text-slate-400 mt-2">Date: ${new Date().toLocaleDateString('en-GB')}</p>
+    </div>
+    <div class="pb-2"><button type="button" id="btn-submit" onclick="submitApplication()" class="w-full py-3 rounded-xl bg-brand-navy text-white font-semibold shadow-sm"><i class="fa-solid fa-paper-plane mr-1"></i> Submit application</button>
+      <p class="text-[11px] text-slate-400 text-center mt-2">After submitting you will not be able to edit unless corrections are requested.</p></div>`;
+}
+
+// ---------------------------------------------------------------- signature canvas
+function initSigCanvas() {
+  sigCanvas = document.getElementById('sig-canvas');
+  if (!sigCanvas) return;
+  sigCtx = sigCanvas.getContext('2d');
+  const rect = sigCanvas.getBoundingClientRect();
+  sigCanvas.width = Math.max(1, Math.floor(rect.width)); sigCanvas.height = 120;
+  sigCtx.lineWidth = 2.5; sigCtx.lineCap = 'round'; sigCtx.strokeStyle = '#1e1b4b';
+  const pos = e => { const r = sigCanvas.getBoundingClientRect(); const p = e.touches ? e.touches[0] : e; return { x: p.clientX - r.left, y: p.clientY - r.top }; };
+  const start = e => { e.preventDefault(); drawing = true; const ph = document.getElementById('sig-placeholder'); if (ph) ph.style.display = 'none'; const p = pos(e); sigCtx.beginPath(); sigCtx.moveTo(p.x, p.y); };
+  const move = e => { if (!drawing) return; e.preventDefault(); const p = pos(e); sigCtx.lineTo(p.x, p.y); sigCtx.stroke(); };
+  const stop = () => { if (!drawing) return; drawing = false; if (!isBlank(sigCanvas)) { sigData = sigCanvas.toDataURL('image/png'); delete errors.signature; markDirty(); } };
+  sigCanvas.addEventListener('mousedown', start); sigCanvas.addEventListener('mousemove', move); window.addEventListener('mouseup', stop);
+  sigCanvas.addEventListener('touchstart', start, { passive: false }); sigCanvas.addEventListener('touchmove', move, { passive: false }); window.addEventListener('touchend', stop);
+}
+function isBlank(c) { const b = document.createElement('canvas'); b.width = c.width; b.height = c.height; return c.toDataURL() === b.toDataURL(); }
+function clearSigCanvas() {
+  if (!sigCanvas) return;
+  sigCtx.clearRect(0, 0, sigCanvas.width, sigCanvas.height); sigData = null;
+  const ph = document.getElementById('sig-placeholder'); if (ph) ph.style.display = 'flex';
+  markDirty();
+}
+
+// ---------------------------------------------------------------- uploads
+async function compressImage(file) {
+  const bmp = await createImageBitmap(file);
+  const scale = Math.min(1, MAX_IMG_SIDE / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas');
+  c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.drawImage(bmp, 0, 0, c.width, c.height);
+  const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', IMG_QUALITY));
+  if (!blob) throw new Error('compress');
+  return blob;
+}
+
+async function invokeFn(body) {
+  const { data, error } = await supabaseClient.functions.invoke('ifar-application-email', { body: { token, ...body } });
+  if (error) {
+    let msg = 'Request failed.';
+    try { if (error.context && typeof error.context.json === 'function') { const d = await error.context.json(); if (d && d.error) msg = d.error; } } catch (_) {}
+    throw new Error(msg);
+  }
+  if (!data || data.success !== true) throw new Error((data && data.error) || 'Request failed.');
+  return data;
+}
+
+async function handleFiles(slot, fileList) {
+  const def = IFAR_FILE_SLOTS.find(s => s.key === slot);
+  let list = Array.from(fileList || []);
+  if (!def.multi) list = list.slice(0, 1);
+  for (const file of list) {
+    try {
+      const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+      let blob = file, name = file.name, type = file.type;
+      if (isPdf) {
+        if (file.size > MAX_PDF_BYTES) throw new Error(`${file.name} is larger than 8 MB.`);
+        type = 'application/pdf';
+      } else {
+        busySlots[slot] = 'Preparing ' + file.name + '…'; renderStep();
+        try { blob = await compressImage(file); } catch (_) { throw new Error(`${file.name} could not be read. Please use a JPG, PNG or PDF file.`); }
+        name = file.name.replace(/\.[^.]+$/, '') + '.jpg'; type = 'image/jpeg';
+      }
+      busySlots[slot] = 'Uploading ' + name + '…'; renderStep();
+      const up = await invokeFn({ mode: 'upload_url', docType: slot, filename: name, contentType: type });
+      const { error } = await supabaseClient.storage.from(IFAR_BUCKET).uploadToSignedUrl(up.path, up.uploadToken, blob, { contentType: type });
+      if (error) throw new Error('Upload failed: ' + error.message);
+      if (!def.multi && (files[slot] || []).length) { const old = files[slot][0]; invokeFn({ mode: 'delete_file', path: old.path }).catch(() => {}); files[slot] = []; }
+      files[slot] = (files[slot] || []).concat([{ path: up.path, name, type, size: blob.size }]);
+      delete errors['files.' + slot];
+    } catch (e) {
+      toast(e.message || 'Upload failed.', 'error');
+    }
+  }
+  delete busySlots[slot];
+  renderStep();
+  saveDraft(false);
+}
+
+async function removeFile(slot, path) {
+  if (!confirm('Remove this file?')) return;
+  try { await invokeFn({ mode: 'delete_file', path }); } catch (e) { toast(e.message, 'error'); return; }
+  files[slot] = (files[slot] || []).filter(f => f.path !== path);
+  renderStep(); saveDraft(false);
+}
+
+// ---------------------------------------------------------------- save / submit
+function syncDerived() {
+  if (fd.permSame) fd.permAddress = fd.corrAddress || '';
+  if (fd.nok && fd.nok.sameAsCorr) fd.nok.address = fd.corrAddress || '';
+  if (fd.nric) fd.nric = String(fd.nric).trim();
+  fd.email = app.candidate_email;
+}
+
+async function saveDraft(manual) {
+  if (saving) { if (manual) toast('Saving in progress…'); return; }
+  clearTimeout(saveTimer); syncDerived();
+  saving = true; setSaveState('Saving…');
+  const { error } = await supabaseClient.rpc('save_ifar_application_draft', { p_token: token, p_form_data: fd, p_files: files, p_signature: sigData });
+  saving = false;
+  if (error) {
+    setSaveState('Not saved – ' + (error.message || 'error'));
+    if (manual) toast(error.message || 'Unable to save.', 'error');
+    return false;
+  }
+  dirty = false; setSaveState('Saved ' + new Date().toLocaleTimeString('en-MY', { hour: '2-digit', minute: '2-digit' }));
+  if (manual) toast('Draft saved. You can return to this same link anytime.');
+  return true;
+}
+
+function stepOfKey(k) {
+  if (k.startsWith('nok.') || k.startsWith('spouse')) return 1;
+  if (k.startsWith('employment') || k.startsWith('education')) return 2;
+  if (k.startsWith('bank.') || k.startsWith('references')) return 3;
+  if (k === 'files.payment_proof') return 5;
+  if (k.startsWith('files.')) return 4;
+  if (k === 'signature' || k === 'agree') return 5;
+  return 0;
+}
+
+function validate() {
+  syncDerived();
+  const e = {};
+  const need = (k, msg) => { const v = getP(k); if (v == null || String(v).trim() === '') e[k] = msg; };
+  need('title', 'Select a title'); if (fd.title === 'Others') need('titleOther', 'Specify your title');
+  need('name', 'Name as in NRIC is required');
+  need('nric', 'NRIC / Passport No. is required');
+  if (fd.nric && fd.nationality === 'Malaysian' && !/^\d{6}-?\d{2}-?\d{4}$/.test(String(fd.nric).trim())) e.nric = 'Enter a valid NRIC, e.g. 791126-01-5747';
+  need('mobile', 'Mobile phone no. is required');
+  if (fd.mobile && !/^[0-9+\-\s()]{8,16}$/.test(fd.mobile)) e.mobile = 'Enter a valid mobile number';
+  need('nationality', 'Select nationality'); if (fd.nationality === 'Others') need('nationalityOther', 'Specify nationality');
+  need('race', 'Select race'); if (fd.race === 'Others') need('raceOther', 'Specify race');
+  need('religion', 'Select religion'); if (fd.religion === 'Others') need('religionOther', 'Specify religion');
+  need('marital', 'Select marital status');
+  need('corrAddress', 'Correspondence address is required');
+  if (!fd.permSame) need('permAddress', 'Permanent address is required');
+  need('occupation', 'Occupation is required');
+  need('officeAddress', 'Office address is required (enter N/A if none)');
+  need('officePhone', 'Office phone is required (enter N/A if none)');
+  need('membershipNo', 'Membership no. is required (enter N/A if none)');
+  need('existingAgent', 'Answer the existing agent question');
+  if (fd.existingAgent === 'Yes') {
+    const p = fd.principals || {};
+    if (!['life', 'general', 'takaful', 'ifa'].some(k => (p[k] || '').trim())) e.principals = 'Enter at least one principal company';
+  }
+  need('nok.name', 'Next of kin name is required'); need('nok.relationship', 'Next of kin relationship is required'); need('nok.contact', 'Next of kin contact is required');
+  if (!(fd.nok && fd.nok.sameAsCorr)) need('nok.address', 'Next of kin address is required');
+  if (fd.marital === 'Married') {
+    need('spouseRep', 'Answer the spouse question');
+    if (fd.spouseRep === 'Yes') { need('spouseCode', 'Agent/FAR code is required (N/A if unknown)'); need('spouseCompany', 'Spouse company is required'); need('spousePosition', 'Spouse position is required'); }
+  }
+  fd.employment.forEach((r, i) => {
+    need(`employment.${i}.company`, `Employment row ${i + 1}: company is required`);
+    need(`employment.${i}.position`, `Employment row ${i + 1}: position is required`);
+    const ok = v => /^\d{4}-\d{2}$/.test(String(v || ''));
+    if (!ok(r.start)) e[`employment.${i}.start`] = `Employment row ${i + 1}: choose the start month and year`;
+    if (!r.present) {
+      if (!ok(r.end)) e[`employment.${i}.end`] = `Employment row ${i + 1}: choose the end month and year, or Current`;
+      else if (ok(r.start) && r.end < r.start) e[`employment.${i}.end`] = `Employment row ${i + 1}: end cannot be before start`;
+    }
+    r.period = empPeriod(r);
+  });
+  fd.education.forEach((r, i) => ['institution', 'qualification', 'year'].forEach(c => need(`education.${i}.${c}`, `Education row ${i + 1}: ${c} is required`)));
+  need('bank.name', 'Bank name is required'); need('bank.accountNo', 'Bank account number is required');
+  need('bank.branch', 'Bank branch is required');
+  // References are optional, but a row that has been started must be complete
+  fd.references.forEach((r, i) => {
+    if (['name', 'designation', 'phone'].some(c => String(r[c] || '').trim()))
+      ['name', 'designation', 'phone'].forEach(c => need(`references.${i}.${c}`, `Reference ${i + 1}: ${c} is required`));
+  });
+  IFAR_FILE_SLOTS.forEach(s => { if (!(files[s.key] || []).length) e['files.' + s.key] = `Upload: ${s.label}`; });
+  if (!fd.agree) e.agree = 'Please tick the declaration';
+  if (!sigData) e.signature = 'Please sign above';
+  return e;
+}
+
+async function submitApplication() {
+  errors = validate(); errorsShown = true;
+  const keys = Object.keys(errors);
+  if (keys.length) {
+    step = Math.min(...keys.map(stepOfKey)); renderStep(); window.scrollTo({ top: 0, behavior: 'smooth' });
+    return toast(`${keys.length} item(s) need attention.`, 'error');
+  }
+  fd.references = fd.references.filter(r => ['name', 'designation', 'phone'].some(c => String(r[c] || '').trim()));
+  const btn = document.getElementById('btn-submit');
+  btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-1"></i> Submitting…';
+  const { error } = await supabaseClient.rpc('submit_ifar_application', { p_token: token, p_form_data: fd, p_files: files, p_signature: sigData });
+  if (error) {
+    btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-paper-plane mr-1"></i> Submit application';
+    return toast(error.message || 'Unable to submit.', 'error');
+  }
+  invokeFn({ mode: 'candidate_submitted' }).catch(e => console.warn('Notice email failed:', e.message));
+  document.getElementById('app-shell').classList.add('hidden');
+  const el = document.getElementById('page-state'); el.classList.remove('hidden');
+  el.innerHTML = `<div class="w-14 h-14 mx-auto rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center"><i class="fa-solid fa-circle-check text-2xl"></i></div>
+    <h2 class="text-lg font-bold text-slate-800 mt-4">Application submitted</h2>
+    <p class="text-sm text-slate-500 mt-1">Thank you. Reference <span class="font-mono">${E(app.reference_no)}</span> has been sent to ${E(app.recruiter_name || 'your recruiter')} for review.</p>
+    <p class="text-xs text-slate-400 mt-3">If corrections are needed you will receive an email with this same link.</p>`;
+  window.scrollTo({ top: 0 });
+}
+
+function toast(message, type = 'success') {
+  const el = document.createElement('div');
+  el.className = `px-4 py-3 rounded-xl shadow-xl text-xs font-semibold text-white ${type === 'error' ? 'bg-rose-600' : 'bg-emerald-600'}`;
+  el.textContent = message;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+</script>
+</body>
+</html>

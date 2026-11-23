@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSI Wealth Planners - IFAR Registration</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../supabase-config.js"></script>
+<script src="ifar-logo.js"></script>
+<script src="ifar-shared.js"></script>
+<script src="ifar-pdf.js"></script>
+<style>
+  body { font-family: 'Inter', sans-serif; }
+  .brand-navy { color: #212F6E; }
+  .bg-brand-navy { background-color: #212F6E; }
+  .bg-brand-gold { background-color: #FFCB08; }
+  .ring-brand { --tw-ring-color: #212F6E; }
+</style>
+<script>
+  let AUTH_USER = null;
+  async function requireAuth() {
+    const { data, error } = await supabaseClient.auth.getUser();
+    if (error || !data.user) { window.location.replace('../login.html'); return false; }
+    AUTH_USER = data.user; return true;
+  }
+  async function logoutApp() { await supabaseClient.auth.signOut(); window.location.replace('../login.html'); }
+</script>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+
+<header class="bg-brand-navy text-white shadow-md sticky top-0 z-40">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+    <div class="flex items-start space-x-3">
+      <div class="bg-white/10 p-2 rounded-lg text-yellow-300"><i class="fa-solid fa-user-plus text-xl"></i></div>
+      <div>
+        <h1 class="font-bold text-lg leading-none">TSI Wealth Planners</h1>
+        <span class="text-xs text-slate-300">IFAR Registration</span>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <a href="../index.html" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 flex items-center gap-2">
+        <i class="fa-solid fa-table-cells-large"></i><span class="hidden sm:inline">Adviser Portal</span></a>
+      <div class="hidden sm:block text-right">
+        <p id="auth-user-name" class="text-xs font-semibold">Adviser</p>
+        <p id="auth-user-email" class="text-[10px] text-slate-300"></p>
+      </div>
+      <button onclick="logoutApp()" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 flex items-center gap-2">
+        <i class="fa-solid fa-right-from-bracket"></i><span>Logout</span></button>
+    </div>
+  </div>
+</header>
+
+<div id="toast-container" class="fixed top-20 right-4 z-[60] flex flex-col space-y-2 max-w-sm"></div>
+
+<main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+  <!-- DASHBOARD -->
+  <section id="view-list" class="space-y-6">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+      <div>
+        <h2 class="text-2xl font-bold text-slate-900">IFAR Registration</h2>
+        <p class="text-slate-500 text-sm mt-1">Invite a new IFAR to complete the online application. Review it, then send it to AD.</p>
+      </div>
+      <button onclick="openInvite()" class="inline-flex items-center justify-center bg-brand-navy hover:opacity-90 text-white font-medium px-5 py-2.5 rounded-xl shadow-sm space-x-2">
+        <i class="fa-solid fa-plus"></i><span>Invite New IFAR</span></button>
+    </div>
+
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm"><p class="text-xs text-slate-500">With candidate</p><p id="stat-candidate" class="text-xl font-bold">0</p></div>
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm"><p class="text-xs text-slate-500">Needs your review</p><p id="stat-review" class="text-xl font-bold text-blue-700">0</p></div>
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm"><p class="text-xs text-slate-500">With AD</p><p id="stat-ad" class="text-xl font-bold text-purple-700">0</p></div>
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm"><p class="text-xs text-slate-500">Closed</p><p id="stat-closed" class="text-xl font-bold text-emerald-700">0</p></div>
+    </div>
+
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div class="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+        <h3 class="font-semibold text-slate-800">My invitations</h3>
+        <div class="flex gap-2">
+          <input id="search" placeholder="Search name, email or ref" class="px-3 py-1.5 rounded-lg border border-slate-300 text-xs">
+          <select id="filter-status" class="px-3 py-1.5 rounded-lg border border-slate-300 text-xs">
+            <option value="">All statuses</option>
+            <option value="INVITED">Invited</option><option value="OPENED">Opened</option><option value="DRAFT">In progress</option>
+            <option value="SUBMITTED">Submitted</option><option value="RETURNED">Returned</option><option value="SENT_TO_AD">With AD</option><option value="CLOSED">Closed</option>
+          </select>
+        </div>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-sm">
+          <thead class="bg-slate-50 text-slate-500 uppercase text-xs"><tr>
+            <th class="px-6 py-3 font-semibold">Ref No. &amp; Candidate</th>
+            <th class="px-6 py-3 font-semibold">Created</th>
+            <th class="px-6 py-3 font-semibold">Expires / Submitted</th>
+            <th class="px-6 py-3 font-semibold">Status</th>
+            <th class="px-6 py-3 font-semibold text-right">Actions</th></tr></thead>
+          <tbody id="rows" class="divide-y divide-slate-100"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- REVIEW -->
+  <section id="view-review" class="hidden max-w-4xl mx-auto space-y-4">
+    <div id="review-container" class="bg-white rounded-2xl border border-slate-200 shadow-md p-6 sm:p-8 space-y-6"></div>
+  </section>
+</main>
+
+<!-- INVITE MODAL -->
+<div id="modal-invite" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-start justify-center p-4 overflow-y-auto">
+  <div class="bg-white rounded-2xl max-w-lg w-full p-6 sm:p-8 space-y-5 shadow-2xl my-8">
+    <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+      <div><h3 class="text-xl font-bold text-slate-900">Invite New IFAR</h3>
+        <p class="text-xs text-slate-500 mt-0.5">The application will be linked to your account. The link is valid for 30 days.</p></div>
+      <button onclick="closeModal('modal-invite')" class="text-slate-400 hover:text-slate-600 p-2"><i class="fa-solid fa-xmark text-lg"></i></button>
+    </div>
+    <form id="form-invite" onsubmit="createInvite(event)" class="space-y-4">
+      <div><label class="block text-xs font-semibold text-slate-700 uppercase mb-1">Candidate email *</label>
+        <input id="inv-email" type="email" required placeholder="newifar@example.com" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm"></div>
+      <div><label class="block text-xs font-semibold text-slate-700 uppercase mb-1">Candidate name (optional)</label>
+        <input id="inv-name" type="text" placeholder="Pre-fills the form" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm"></div>
+      <div><label class="block text-xs font-semibold text-slate-700 uppercase mb-1">Note to candidate (optional)</label>
+        <textarea id="inv-note" rows="2" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm"></textarea></div>
+      <div class="pt-3 border-t border-slate-100 flex justify-end gap-3">
+        <button type="button" onclick="closeModal('modal-invite')" class="px-4 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100 text-sm">Cancel</button>
+        <button type="submit" id="inv-submit" class="px-5 py-2.5 rounded-xl bg-brand-navy text-white text-sm font-medium shadow-sm"><i class="fa-solid fa-link mr-1"></i> Create link</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- SHARE MODAL -->
+<div id="modal-share" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-start justify-center p-4">
+  <div class="bg-white rounded-2xl max-w-lg w-full p-6 sm:p-8 space-y-5 shadow-2xl">
+    <div class="text-center space-y-2">
+      <div class="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-xl"><i class="fa-solid fa-link"></i></div>
+      <h3 class="text-xl font-bold text-slate-900">Application Link</h3>
+      <p class="text-xs text-slate-500">Send this personal link to the new IFAR, or email it directly.</p>
+    </div>
+    <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 flex items-center space-x-2">
+      <input id="share-link" readonly class="bg-transparent border-none w-full text-xs text-slate-700 font-mono focus:outline-none">
+      <button onclick="copyLink()" class="px-3 py-1.5 bg-brand-navy text-white rounded-lg text-xs font-semibold flex items-center space-x-1 shrink-0"><i class="fa-solid fa-copy"></i><span>Copy</span></button>
+    </div>
+    <p id="share-expiry" class="text-[11px] text-slate-400 text-center"></p>
+    <div class="border-t border-slate-100 pt-4 flex flex-col gap-2">
+      <button id="share-email-btn" onclick="emailLink()" class="w-full py-2.5 bg-brand-navy text-white rounded-xl text-xs font-semibold flex items-center justify-center space-x-2"><i class="fa-solid fa-envelope"></i><span id="share-email-label">Send link by email</span></button>
+      <button onclick="window.open(document.getElementById('share-link').value,'_blank','noopener')" class="w-full py-2.5 bg-slate-900 text-white rounded-xl text-xs font-semibold flex items-center justify-center space-x-2"><i class="fa-solid fa-arrow-right-to-bracket"></i><span>Preview candidate page</span></button>
+      <button onclick="closeModal('modal-share')" class="w-full py-2.5 text-slate-600 hover:bg-slate-100 rounded-xl text-xs font-medium">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- RETURN MODAL -->
+<div id="modal-return" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-start justify-center p-4 overflow-y-auto">
+  <div class="bg-white rounded-2xl max-w-lg w-full p-6 sm:p-8 space-y-4 shadow-2xl my-8">
+    <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+      <div><h3 class="text-xl font-bold text-slate-900">Return for correction</h3>
+        <p class="text-xs text-slate-500 mt-0.5">The candidate is emailed the reason and the same link reopens (30 days).</p></div>
+      <button onclick="closeModal('modal-return')" class="text-slate-400 hover:text-slate-600 p-2"><i class="fa-solid fa-xmark text-lg"></i></button>
+    </div>
+    <div><label class="block text-xs font-semibold text-slate-700 uppercase mb-1">Reason *</label>
+      <textarea id="ret-reason" rows="3" placeholder="e.g. NRIC back is blurry, please re-upload." class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm"></textarea></div>
+    <div><p class="block text-xs font-semibold text-slate-700 uppercase mb-1">Highlight sections to review (optional)</p>
+      <div id="ret-flags" class="grid grid-cols-1 sm:grid-cols-2 gap-1"></div></div>
+    <div class="pt-3 border-t border-slate-100 flex justify-end gap-3">
+      <button onclick="closeModal('modal-return')" class="px-4 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100 text-sm">Cancel</button>
+      <button id="ret-submit" onclick="submitReturn()" class="px-5 py-2.5 rounded-xl bg-rose-600 text-white text-sm font-medium"><i class="fa-solid fa-rotate-left mr-1"></i> Return to candidate</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  if (window.pdfjsLib) window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+  let apps = [];
+  let activeId = null;
+
+  window.addEventListener('DOMContentLoaded', async () => {
+    if (!(await requireAuth())) return;
+    const meta = AUTH_USER.user_metadata || {};
+    document.getElementById('auth-user-name').textContent = meta.full_name || 'Adviser';
+    document.getElementById('auth-user-email').textContent = AUTH_USER.email || '';
+    document.getElementById('search').addEventListener('input', render);
+    document.getElementById('filter-status').addEventListener('change', render);
+    await load();
+  });
+
+  // ------------------------------------------------------------ data
+  async function load() {
+    const { data, error } = await supabaseClient.from('ifar_applications').select('*').order('created_at', { ascending: false });
+    if (error) { console.error(error); toast('Unable to load applications.', 'error'); apps = []; }
+    else apps = data || [];
+    const { data: ev } = await supabaseClient.from('ifar_application_audit_events').select('*').order('occurred_at', { ascending: true });
+    const g = {};
+    (ev || []).forEach(e => { (g[e.application_id] = g[e.application_id] || []).push(e); });
+    apps.forEach(a => { a.auditEvents = g[a.id] || []; });
+    render();
+    if (!document.getElementById('view-review').classList.contains('hidden') && activeId) openReview(activeId, true);
+  }
+
+  const isOpenStatus = s => ['INVITED', 'OPENED', 'DRAFT', 'RETURNED'].includes(s);
+  const isExpired = a => isOpenStatus(a.status) && new Date(a.expires_at) < new Date();
+
+  function render() {
+    const q = document.getElementById('search').value.toLowerCase();
+    const st = document.getElementById('filter-status').value;
+    document.getElementById('stat-candidate').textContent = apps.filter(a => isOpenStatus(a.status)).length;
+    document.getElementById('stat-review').textContent = apps.filter(a => a.status === 'SUBMITTED').length;
+    document.getElementById('stat-ad').textContent = apps.filter(a => a.status === 'SENT_TO_AD').length;
+    document.getElementById('stat-closed').textContent = apps.filter(a => a.status === 'CLOSED').length;
+
+    const list = apps.filter(a => (!st || a.status === st) &&
+      (!q || `${a.reference_no} ${a.candidate_email} ${a.candidate_name || ''} ${a.form_data?.name || ''}`.toLowerCase().includes(q)));
+    const tb = document.getElementById('rows');
+    if (!list.length) {
+      tb.innerHTML = `<tr><td colspan="5" class="px-6 py-8 text-center text-slate-400">${apps.length ? 'No matches.' : 'No invitations yet. Click "Invite New IFAR" to begin.'}</td></tr>`;
+      return;
+    }
+    tb.innerHTML = list.map(a => {
+      const nm = a.form_data?.name || a.candidate_name || '';
+      const exp = isExpired(a);
+      const when = isOpenStatus(a.status)
+        ? `<span class="${exp ? 'text-rose-600 font-semibold' : ''}">${exp ? 'Expired ' : 'Expires '}${ifarFmtDate(a.expires_at)}</span>`
+        : `Submitted ${ifarFmtDate(a.submitted_at)}`;
+      let acts = '';
+      if (isOpenStatus(a.status)) {
+        acts += exp
+          ? `<button onclick="extend('${a.id}')" class="px-3 py-1.5 bg-amber-400 text-[#212F6E] rounded-lg text-xs font-bold">Extend 30 days</button>`
+          : `<button onclick="openShare('${a.id}')" class="px-3 py-1.5 text-brand-navy hover:bg-slate-100 rounded-lg text-xs font-semibold"><i class="fa-solid fa-share-nodes"></i> Link</button>`;
+        if (a.status === 'RETURNED') acts += `<button onclick="openReview('${a.id}')" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-semibold">View</button>`;
+        if (a.status !== 'RETURNED') acts += `<button onclick="del('${a.id}')" title="Delete" class="p-2 text-rose-500 hover:bg-rose-50 rounded-lg text-xs"><i class="fa-solid fa-trash"></i></button>`;
+      } else if (a.status === 'SUBMITTED') {
+        acts += `<button onclick="openReview('${a.id}')" class="px-3 py-1.5 bg-brand-navy text-white rounded-lg text-xs font-semibold"><i class="fa-solid fa-magnifying-glass mr-1"></i>Review</button>`;
+      } else {
+        acts += `<button onclick="openReview('${a.id}')" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-semibold">View</button>`;
+      }
+      return `<tr class="hover:bg-slate-50/80">
+        <td class="px-6 py-4"><div class="font-bold text-slate-900">${ifarEsc(nm || a.candidate_email)}</div>
+          <div class="text-xs text-slate-400">${ifarEsc(a.candidate_email)}</div>
+          <div class="text-xs text-slate-400 font-mono mt-0.5">${ifarEsc(a.reference_no)}</div></td>
+        <td class="px-6 py-4 text-xs text-slate-500">${ifarFmtDate(a.created_at)}</td>
+        <td class="px-6 py-4 text-xs text-slate-500">${when}</td>
+        <td class="px-6 py-4">${ifarStatusBadge(a)}${ifarMilestoneBadges(a)}</td>
+        <td class="px-6 py-4 text-right space-x-1 whitespace-nowrap">${acts}</td></tr>`;
+    }).join('');
+  }
+
+  // ------------------------------------------------------------ modals / toast
+  function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
+  function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+  function toast(message, type = 'success') {
+    const el = document.createElement('div');
+    el.className = `${type === 'error' ? 'bg-rose-600' : 'bg-slate-900'} text-white px-4 py-3 rounded-xl shadow-xl text-xs font-medium flex items-center space-x-2`;
+    el.innerHTML = `<i class="fa-solid ${type === 'error' ? 'fa-circle-exclamation' : 'fa-circle-check'}"></i><span></span>`;
+    el.lastChild.textContent = message;
+    document.getElementById('toast-container').appendChild(el);
+    setTimeout(() => el.remove(), 4200);
+  }
+  async function fnError(error) {
+    let m = 'Request failed.';
+    try { if (error.context && typeof error.context.json === 'function') { const d = await error.context.json(); if (d?.error) m = d.error; } } catch (_) {}
+    return m;
+  }
+
+  // ------------------------------------------------------------ invite / share
+  function openInvite() { document.getElementById('form-invite').reset(); openModal('modal-invite'); }
+
+  async function createInvite(e) {
+    e.preventDefault();
+    const btn = document.getElementById('inv-submit'); btn.disabled = true;
+    const meta = AUTH_USER.user_metadata || {};
+    const { data, error } = await supabaseClient.from('ifar_applications').insert({
+      recruiter_id: AUTH_USER.id,
+      recruiter_name: meta.full_name || AUTH_USER.email,
+      recruiter_email: AUTH_USER.email,
+      candidate_email: document.getElementById('inv-email').value.trim().toLowerCase(),
+      candidate_name: document.getElementById('inv-name').value.trim() || null,
+      note: document.getElementById('inv-note').value.trim() || null,
+      reference_no: 'PENDING', status: 'INVITED'
+    }).select('*').single();
+    btn.disabled = false;
+    if (error) { console.error(error); return toast('Unable to create the invitation.', 'error'); }
+    closeModal('modal-invite');
+    await load();
+    openShare(data.id);
+    toast('Invitation created.');
+  }
+
+  function openShare(id) {
+    activeId = id;
+    const a = apps.find(x => x.id === id); if (!a) return;
+    document.getElementById('share-link').value = new URL(`apply.html?token=${a.public_token}`, window.location.href).href;
+    document.getElementById('share-expiry').textContent = `${a.reference_no} · valid until ${ifarFmtDate(a.expires_at)}`;
+    document.getElementById('share-email-label').textContent = `Send link to ${a.candidate_email}`;
+    openModal('modal-share');
+  }
+  function copyLink() {
+    const i = document.getElementById('share-link'); i.select();
+    navigator.clipboard.writeText(i.value).then(() => toast('Link copied to clipboard.'));
+  }
+  async function emailLink() {
+    const a = apps.find(x => x.id === activeId); if (!a) return;
+    const btn = document.getElementById('share-email-btn'); btn.disabled = true;
+    const { data, error } = await supabaseClient.functions.invoke('ifar-application-email', { body: { mode: 'invite', applicationId: a.id } });
+    btn.disabled = false;
+    if (error) return toast(await fnError(error), 'error');
+    if (!data?.success) return toast(data?.error || 'Unable to send the email.', 'error');
+    toast(`Invitation emailed to ${data.recipient}.`);
+    await load();
+  }
+
+  async function extend(id) {
+    const { error } = await supabaseClient.rpc('recruiter_extend_ifar_application', { p_id: id });
+    if (error) return toast(error.message, 'error');
+    toast('Link extended by 30 days. You can resend the email from the Link button.');
+    await load();
+  }
+
+  async function del(id) {
+    if (!confirm('Delete this invitation? The candidate link will stop working.')) return;
+    const a = apps.find(x => x.id === id);
+    const paths = Object.values(a?.files || {}).flat().map(f => f.path);
+    if (paths.length) await supabaseClient.storage.from(IFAR_BUCKET).remove(paths);
+    const { error } = await supabaseClient.from('ifar_applications').delete().eq('id', id);
+    if (error) return toast('Unable to delete.', 'error');
+    toast('Invitation deleted.'); await load();
+  }
+
+  // ------------------------------------------------------------ review view
+  function openReview(id, keep) {
+    activeId = id;
+    const a = apps.find(x => x.id === id); if (!a) return;
+    document.getElementById('view-list').classList.add('hidden');
+    document.getElementById('view-review').classList.remove('hidden');
+    const canAct = a.status === 'SUBMITTED';
+    const canReturn = ['SUBMITTED', 'SENT_TO_AD'].includes(a.status);
+    const hasPdf = ['SENT_TO_AD', 'CLOSED'].includes(a.status) && a.pdf_path;
+    const events = (a.auditEvents || []).map(e => `<div class="flex justify-between gap-4"><span class="text-emerald-400">&check; ${ifarEsc(ifarAuditLabel(e))}${e.actor_label ? ` <span class="text-slate-500">· ${ifarEsc(e.actor_label)}</span>` : ''}</span><span class="text-slate-500 shrink-0">${ifarFmtDate(e.occurred_at, true)}</span></div>`).join('');
+    const showData = !isOpenStatus(a.status) || a.status === 'RETURNED' || Object.keys(a.form_data || {}).length;
+    document.getElementById('review-container').innerHTML = `
+      <div class="flex justify-between items-start border-b border-slate-100 pb-4">
+        <div><h2 class="text-lg font-bold text-slate-900 uppercase">IFAR Application</h2>
+          <p class="text-xs text-slate-500 font-mono">${ifarEsc(a.reference_no)} · ${ifarEsc(a.candidate_email)}</p>
+          <div class="mt-2">${ifarStatusBadge(a)}${ifarMilestoneBadges(a)}</div></div>
+        <button onclick="closeReview()" class="text-xs text-slate-500 hover:text-slate-800"><i class="fa-solid fa-arrow-left mr-1"></i>Back</button>
+      </div>
+      ${a.status === 'RETURNED' ? `<div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-900"><b>Returned by ${a.returned_by_role === 'AD' ? 'AD' : 'IFAR'}:</b> ${ifarEsc(a.return_reason)}<p class="text-xs mt-1">Waiting for the candidate to correct and resubmit.</p></div>` : ''}
+      ${a.status === 'SENT_TO_AD' ? `<div class="bg-purple-50 border border-purple-200 rounded-xl p-3 text-sm text-purple-900">Sent to AD on ${ifarFmtDate(a.sent_to_ad_at, true)}.</div>` : ''}
+      ${showData ? ifarSummaryHtml(a) : '<p class="text-sm text-slate-400">The candidate has not started the form yet.</p>'}
+      <div class="flex flex-wrap gap-2 pt-2 border-t border-slate-100">
+        ${['SUBMITTED', 'SENT_TO_AD', 'CLOSED'].includes(a.status) ? `<button id="btn-pdf" onclick="downloadPdf('${a.id}')" class="px-4 py-2.5 bg-slate-900 text-white rounded-xl text-sm font-semibold"><i class="fa-solid fa-file-pdf mr-1"></i> ${hasPdf ? 'Download PDF' : 'Preview PDF'}</button>` : ''}
+        ${canAct ? `<button id="btn-send-ad" onclick="sendToAd('${a.id}')" class="px-4 py-2.5 bg-brand-navy text-white rounded-xl text-sm font-semibold"><i class="fa-solid fa-paper-plane mr-1"></i> Send to AD</button>` : ''}
+        ${a.status === 'SENT_TO_AD' ? `<button id="btn-resend-ad" onclick="resendToAd('${a.id}')" class="px-4 py-2.5 bg-brand-navy text-white rounded-xl text-sm font-semibold"><i class="fa-solid fa-paper-plane mr-1"></i> Resend to AD</button>` : ''}
+        ${canReturn ? `<button onclick="openReturn('${a.id}')" class="px-4 py-2.5 bg-rose-600 text-white rounded-xl text-sm font-semibold"><i class="fa-solid fa-rotate-left mr-1"></i> Return for correction</button>` : ''}
+      </div>
+      <div class="space-y-2"><h4 class="text-xs font-bold uppercase tracking-wider text-slate-400">Audit log</h4>
+        <div class="bg-slate-900 text-slate-300 p-4 rounded-xl text-xs font-mono space-y-2">${events || '<span class="text-slate-500">No events</span>'}</div></div>`;
+    if (!keep) window.scrollTo({ top: 0 });
+  }
+  function closeReview() {
+    document.getElementById('view-review').classList.add('hidden');
+    document.getElementById('view-list').classList.remove('hidden');
+  }
+
+  async function downloadPdf(id) {
+    const a = apps.find(x => x.id === id); if (!a) return;
+    const btn = document.getElementById('btn-pdf'); const html = btn?.innerHTML;
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-1"></i> Building PDF…'; }
+    try {
+      if (['SENT_TO_AD', 'CLOSED'].includes(a.status) && a.pdf_path) {
+        const { data, error } = await supabaseClient.storage.from(IFAR_BUCKET).createSignedUrl(a.pdf_path, 120);
+        if (error) throw error;
+        window.open(data.signedUrl, '_blank', 'noopener');
+      } else {
+        const built = await buildIfarApplicationPDF(a, { auditEvents: a.auditEvents });
+        built.pdf.save(built.filename);
+      }
+    } catch (e) { console.error(e); toast('Unable to build the PDF: ' + (e.message || e), 'error'); }
+    if (btn) { btn.disabled = false; btn.innerHTML = html; }
+  }
+
+  async function sendToAd(id) {
+    const a = apps.find(x => x.id === id); if (!a || a.status !== 'SUBMITTED') return;
+    if (!confirm('Send this application to AD? You can still return it for correction afterwards.')) return;
+    const btn = document.getElementById('btn-send-ad'); const html = btn.innerHTML; btn.disabled = true;
+    try {
+      btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-1"></i> Building PDF…';
+      const built = await buildIfarApplicationPDF(a, { auditEvents: a.auditEvents });
+      const path = `${a.id}/final/${Date.now()}-${built.filename}`;
+      btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-1"></i> Uploading…';
+      const up = await supabaseClient.storage.from(IFAR_BUCKET).upload(path, built.blob, { contentType: 'application/pdf' });
+      if (up.error) throw new Error(up.error.message);
+      const { error } = await supabaseClient.rpc('recruiter_send_ifar_application_to_ad', { p_id: a.id, p_pdf_path: path });
+      if (error) throw new Error(error.message);
+      btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-1"></i> Emailing AD…';
+      const { data, error: fe } = await supabaseClient.functions.invoke('ifar-application-email', { body: { mode: 'send_to_ad', applicationId: a.id } });
+      if (fe || !data?.success) {
+        toast('Marked as sent to AD, but the email failed: ' + (fe ? await fnError(fe) : data?.error) + ' Use "Resend to AD".', 'error');
+      } else toast(`Sent to AD (${data.attached ? 'PDF attached' : 'secure link'}).`);
+    } catch (e) {
+      console.error(e); toast(e.message || 'Unable to send to AD.', 'error');
+    }
+    await load();
+  }
+
+  async function resendToAd(id) {
+    const btn = document.getElementById('btn-resend-ad'); const html = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-1"></i> Sending…';
+    const { data, error } = await supabaseClient.functions.invoke('ifar-application-email', { body: { mode: 'send_to_ad', applicationId: id } });
+    btn.disabled = false; btn.innerHTML = html;
+    if (error) return toast(await fnError(error), 'error');
+    if (!data?.success) return toast(data?.error || 'Unable to resend.', 'error');
+    toast('Resent to AD.'); await load();
+  }
+
+  // ------------------------------------------------------------ return
+  function openReturn(id) {
+    activeId = id;
+    document.getElementById('ret-reason').value = '';
+    document.getElementById('ret-flags').innerHTML = Object.entries(IFAR_FLAG_SECTIONS).map(([k, v]) =>
+      `<label class="flex items-center gap-2 text-sm"><input type="checkbox" value="${k}" class="ret-flag"> ${ifarEsc(v)}</label>`).join('');
+    openModal('modal-return');
+  }
+  async function submitReturn() {
+    const reason = document.getElementById('ret-reason').value.trim();
+    if (!reason) return toast('Please enter a reason.', 'error');
+    const flags = Array.from(document.querySelectorAll('.ret-flag:checked')).map(c => c.value);
+    const btn = document.getElementById('ret-submit'); btn.disabled = true;
+    const { error } = await supabaseClient.rpc('recruiter_return_ifar_application', { p_id: activeId, p_reason: reason, p_flags: flags });
+    if (error) { btn.disabled = false; return toast(error.message, 'error'); }
+    const { data, error: fe } = await supabaseClient.functions.invoke('ifar-application-email', { body: { mode: 'return_notice', applicationId: activeId } });
+    btn.disabled = false;
+    closeModal('modal-return');
+    if (fe || !data?.success) toast('Returned, but the email failed: ' + (fe ? await fnError(fe) : data?.error) + ' Copy the link and send it manually.', 'error');
+    else toast(`Returned. ${data.recipient} has been emailed.`);
+    await load();
+  }
+</script>
+</body>
+</html>
